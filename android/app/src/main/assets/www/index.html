@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ChatApp Web</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell" aria-label="ChatApp Web">
+      <nav class="rail" aria-label="Primary">
+        <button class="rail-button active" data-section="chats" title="Chats" aria-label="Chats">
+          <span class="badge">8</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H7l-3 3V5Zm4 4h8v2H8V9Zm0 4h6v2H8v-2Z"/></svg>
+        </button>
+        <button class="rail-button" data-section="status" title="Status" aria-label="Status">
+          <span class="dot"></span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 0 1 8.9 7.75h-2.05A7 7 0 0 0 12 5V3Zm8.9 10.25A9 9 0 0 1 13.25 20.9v-2.05a7 7 0 0 0 5.6-5.6h2.05ZM10.75 20.9A9 9 0 0 1 3.1 13.25h2.05a7 7 0 0 0 5.6 5.6v2.05ZM3.1 10.75A9 9 0 0 1 10.75 3.1v2.05a7 7 0 0 0-5.6 5.6H3.1ZM12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8Z"/></svg>
+        </button>
+        <button class="rail-button" data-section="channels" title="Channels" aria-label="Channels">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0v4a6 6 0 0 1-11.7 1.86L3 17V8h3Zm2 0v5.17l.49.27A4 4 0 0 0 16 12V8A4 4 0 0 0 8 8Z"/></svg>
+        </button>
+        <button class="rail-button" data-section="communities" title="Communities" aria-label="Communities">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6Zm8 0a3 3 0 1 1 0-6 3 3 0 0 1 0 6ZM3 19a5 5 0 0 1 10 0v1H3v-1Zm8 1v-1a6.95 6.95 0 0 0-1.1-3.76A5 5 0 0 1 21 19v1H11Z"/></svg>
+        </button>
+        <button class="rail-button" data-section="business" title="Business tools" aria-label="Business tools">
+          <span class="dot"></span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16l-1 5v8H5v-8L4 7Zm3 7v4h10v-4H7Zm-1-5 .4 2h11.2L18 9H6Zm1-5h10v2H7V4Z"/></svg>
+        </button>
+        <div class="rail-spacer"></div>
+        <button class="rail-button" data-section="settings" title="Settings" aria-label="Settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m19.4 13.5.1-1.5-.1-1.5 2-1.55-2-3.46-2.45 1a8 8 0 0 0-2.6-1.5L14 2.4h-4l-.35 2.6a8 8 0 0 0-2.6 1.5l-2.45-1-2 3.46 2 1.55L4.5 12l.1 1.5-2 1.55 2 3.46 2.45-1a8 8 0 0 0 2.6 1.5l.35 2.6h4l.35-2.6a8 8 0 0 0 2.6-1.5l2.45 1 2-3.46-2-1.55ZM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z"/></svg>
+        </button>
+        <div class="profile" title="Profile">AM</div>
+      </nav>
+
+      <aside class="sidebar">
+        <section class="panel chats-panel" data-panel="chats">
+          <header class="panel-header">
+            <h1>WhatsApp</h1>
+            <div class="header-actions">
+              <button title="New chat" aria-label="New chat" data-action="newChat">+</button>
+              <button title="Menu" aria-label="Menu" data-action="chatMenu">...</button>
+            </div>
+          </header>
+          <label class="search-box">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 4a5.5 5.5 0 0 1 4.38 8.83l4.15 4.14-1.06 1.06-4.14-4.15A5.5 5.5 0 1 1 9.5 4Zm0 1.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"/></svg>
+            <input id="searchInput" type="search" placeholder="Search or start a new chat" />
+          </label>
+          <div class="filters" aria-label="Chat filters">
+            <button class="filter active" data-filter="all">All</button>
+            <button class="filter" data-filter="unread">Unread</button>
+            <button class="filter" data-filter="favorites">Favorites</button>
+            <button class="filter" data-filter="groups">Groups</button>
+          </div>
+          <div class="notice" data-notice>
+            <strong>Message notifications are off.</strong>
+            <span>Turn on</span>
+            <button aria-label="Dismiss notification">x</button>
+          </div>
+          <div class="notice business" data-notice>
+            <strong>Reach more customers faster</strong>
+            <p>Create a broadcast audience by uploading recipients.</p>
+            <button aria-label="Dismiss business notice">x</button>
+          </div>
+          <div id="chatList" class="list" aria-label="Chats"></div>
+        </section>
+
+        <section class="panel status-panel hidden" data-panel="status">
+          <header class="panel-header">
+            <h1>Status</h1>
+            <div class="header-actions">
+              <button title="Add status" aria-label="Add status" data-action="addStatus">+</button>
+              <button title="Menu" aria-label="Menu" data-action="chatMenu">...</button>
+            </div>
+          </header>
+          <button class="status-me" data-action="myStatus">
+            <span class="avatar small">AM</span>
+            <span><strong>My status</strong><small>Click to add status update</small></span>
+          </button>
+          <h2>Recent</h2>
+          <div id="recentStatuses" class="status-list"></div>
+          <h2>Viewed</h2>
+          <div id="viewedStatuses" class="status-list"></div>
+        </section>
+
+        <section class="panel channels-panel hidden" data-panel="channels">
+          <header class="panel-header">
+            <h1>Channels</h1>
+            <div class="header-actions">
+              <button title="Add channel" aria-label="Add channel" data-action="addChannel">+</button>
+            </div>
+          </header>
+          <div class="channels-intro">
+            <h2>Stay updated on your favorite topics</h2>
+            <p>Find channels to follow below</p>
+          </div>
+          <div id="channelList" class="channel-list" aria-label="Channels"></div>
+          <div class="channel-actions">
+            <button data-action="discoverChannels"><span class="mini-grid"></span>Discover more</button>
+            <button data-action="createChannel"><span>+</span>Create channel</button>
+          </div>
+        </section>
+
+        <section class="panel communities-panel hidden" data-panel="communities">
+          <header class="panel-header">
+            <h1>Communities</h1>
+          </header>
+          <div class="community-sidebar-empty">
+            <div class="community-art" aria-hidden="true">
+              <span class="community-card people-mark"></span>
+              <span class="community-card pencil-mark"></span>
+              <span class="community-card apple-mark"></span>
+              <span class="community-card chat-mark"></span>
+            </div>
+            <h2>Stay connected with a community</h2>
+            <p>Communities bring members together in topic-based groups, and make it easy to get admin announcements. Any community you're added to will appear here.</p>
+            <button data-action="exampleCommunities">See example communities</button>
+          </div>
+        </section>
+
+        <section class="panel business-panel hidden" data-panel="business">
+          <header class="panel-header">
+            <h1>Business tools</h1>
+          </header>
+          <div class="tool-scroll">
+            <h2>Business tools</h2>
+            <div class="tool-group">
+              <button class="tool-row" data-action="businessProfile">
+                <span class="line-icon store-icon"></span>
+                <span><strong>Business profile</strong><small>Manage address, hours and website</small></span>
+              </button>
+              <button class="tool-row" data-action="catalog">
+                <span class="line-icon catalog-icon"></span>
+                <span><strong>Catalog</strong><small>Show products and services</small></span>
+              </button>
+              <button class="tool-row" data-action="orders">
+                <span class="line-icon orders-icon"></span>
+                <span><strong>Orders</strong><small>Manage orders and payments</small></span>
+              </button>
+            </div>
+            <h2>Reach more customers</h2>
+            <div class="tool-group">
+              <button class="tool-row" data-action="advertise">
+                <span class="line-icon megaphone-icon"></span>
+                <span><strong>Advertise</strong><small>Create ads that lead to WhatsApp</small></span>
+              </button>
+            </div>
+            <h2>Messaging</h2>
+            <div class="tool-group">
+              <button class="tool-row" data-action="quickReplies">
+                <span class="line-icon quick-icon"></span>
+                <span><strong>Quick replies</strong><small>Reuse frequent messages</small></span>
+              </button>
+              <button class="tool-row" data-action="labels">
+                <span class="line-icon label-icon"></span>
+                <span><strong>Labels</strong><small>Organise chats and customers</small></span>
+              </button>
+              <button class="tool-row" data-action="broadcastAudience">
+                <span class="line-icon upload-icon"></span>
+                <span><strong>Broadcast audience</strong><small>Upload a list of broadcast recipients</small></span>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel settings-panel hidden" data-panel="settings">
+          <header class="panel-header">
+            <h1>Settings</h1>
+          </header>
+          <label class="search-box settings-search">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 4a5.5 5.5 0 0 1 4.38 8.83l4.15 4.14-1.06 1.06-4.14-4.15A5.5 5.5 0 1 1 9.5 4Zm0 1.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"/></svg>
+            <input type="search" placeholder="Search settings" />
+          </label>
+          <div class="settings-scroll">
+            <div class="settings-notice" data-notice>
+              <span class="line-icon bulb-icon"></span>
+              <span data-action="chooseNotifications"><strong>Choose your notifications</strong><small>Get notifications for messages, groups or your status. <b>Choose now</b></small></span>
+              <button aria-label="Dismiss settings notice">x</button>
+            </div>
+            <button class="profile-row" data-action="profile">
+              <span class="profile-photo">SM</span>
+              <strong>Sangavi Mahendran</strong>
+            </button>
+            <div class="settings-list">
+              <button class="settings-row" data-jump-section="business">
+                <span class="line-icon store-icon"></span>
+                <span><strong>Business tools</strong><small>Quick replies, labels, catalog</small></span>
+              </button>
+              <button class="settings-row active" data-action="account">
+                <span class="line-icon key-icon"></span>
+                <span><strong>Account</strong><small>Security notifications, account info</small></span>
+              </button>
+              <button class="settings-row" data-action="privacy">
+                <span class="line-icon lock-icon"></span>
+                <span><strong>Privacy</strong><small>Blocked contacts, disappearing messages</small></span>
+              </button>
+              <button class="settings-row" data-action="chatsSettings">
+                <span class="line-icon chats-icon"></span>
+                <span><strong>Chats</strong><small>Theme, wallpaper, chat settings</small></span>
+              </button>
+              <button class="settings-row" data-action="notificationsSettings">
+                <span class="line-icon bell-icon"></span>
+                <span><strong>Notifications</strong><small>Messages, groups, sounds</small></span>
+              </button>
+              <button class="settings-row" data-action="keyboardShortcuts">
+                <span class="line-icon keyboard-icon"></span>
+                <span><strong>Keyboard shortcuts</strong><small>Quick actions</small></span>
+              </button>
+              <button class="settings-row" data-action="help">
+                <span class="line-icon help-icon"></span>
+                <span><strong>Help and feedback</strong><small>Help center, contact us, privacy policy</small></span>
+              </button>
+              <button class="settings-row logout-row" data-action="logout">
+                <span class="line-icon logout-icon"></span>
+                <span><strong>Log out</strong></span>
+              </button>
+            </div>
+          </div>
+        </section>
+      </aside>
+
+      <section class="content" data-content="chats">
+        <div id="emptyState" class="empty-state hidden">
+          <div class="empty-illustration">WA</div>
+          <h2>WhatsApp Business on Web</h2>
+          <p>Grow, organise and manage your account.</p>
+          <small>Your personal messages are end-to-end encrypted</small>
+        </div>
+        <article id="conversation" class="conversation"></article>
+      </section>
+    </main>
+    <script type="module" src="src/app.js"></script>
+  </body>
+</html>
