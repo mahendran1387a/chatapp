@@ -5,6 +5,58 @@ import pg from 'pg';
 
 const sharedStateId = 'shared';
 
+function mergeMessages(existingMessages = [], incomingMessages = []) {
+  const messagesById = new Map();
+  for (const message of existingMessages) {
+    if (message?.id) messagesById.set(message.id, message);
+  }
+  for (const message of incomingMessages) {
+    if (message?.id) messagesById.set(message.id, message);
+  }
+  return [...messagesById.values()];
+}
+
+function mergeContact(existingContact, incomingContact) {
+  return {
+    ...existingContact,
+    ...incomingContact,
+    messages: mergeMessages(existingContact?.messages, incomingContact?.messages)
+  };
+}
+
+export function mergeChatState(existing = {}, incoming = {}) {
+  const contactsById = new Map();
+  for (const contact of existing.contacts ?? []) {
+    if (contact?.id) contactsById.set(contact.id, contact);
+  }
+  for (const contact of incoming.contacts ?? []) {
+    if (!contact?.id) continue;
+    contactsById.set(contact.id, mergeContact(contactsById.get(contact.id), contact));
+  }
+
+  return {
+    ...existing,
+    ...incoming,
+    contacts: [...contactsById.values()]
+  };
+}
+
+function queueStoreWrites(store) {
+  let writeQueue = Promise.resolve();
+
+  return {
+    ...store,
+    async merge(payload) {
+      writeQueue = writeQueue.then(async () => {
+        const merged = mergeChatState(await store.read(), payload);
+        await store.write(merged);
+        return merged;
+      });
+      return writeQueue;
+    }
+  };
+}
+
 function createFileStore(chatsFile) {
   return {
     async read() {
@@ -45,8 +97,8 @@ function createPostgresStore(databaseUrl) {
 }
 
 export function createChatStateStore({ root, databaseUrl = process.env.DATABASE_URL } = {}) {
-  if (databaseUrl) return createPostgresStore(databaseUrl);
+  if (databaseUrl) return queueStoreWrites(createPostgresStore(databaseUrl));
 
   const baseRoot = root ?? process.cwd();
-  return createFileStore(join(baseRoot, '.data', 'chats.json'));
+  return queueStoreWrites(createFileStore(join(baseRoot, '.data', 'chats.json')));
 }

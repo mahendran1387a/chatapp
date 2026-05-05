@@ -27,8 +27,22 @@ function resolvePath(url) {
 }
 
 function sendJson(response, status, data) {
-  response.writeHead(status, { 'Content-Type': 'application/json' });
+  response.writeHead(status, {
+    'Cache-Control': 'no-store',
+    'Content-Type': 'application/json',
+    'Referrer-Policy': 'no-referrer',
+    'X-Content-Type-Options': 'nosniff'
+  });
   response.end(JSON.stringify(data));
+}
+
+function sendText(response, status, text) {
+  response.writeHead(status, {
+    'Content-Type': 'text/plain',
+    'Referrer-Policy': 'no-referrer',
+    'X-Content-Type-Options': 'nosniff'
+  });
+  response.end(text);
 }
 
 async function readRequestBody(request) {
@@ -50,8 +64,8 @@ async function handleChatsApi(request, response) {
   if (request.method === 'POST' || request.method === 'PUT') {
     const body = await readRequestBody(request);
     const data = JSON.parse(body);
-    await chatStateStore.write(data);
-    sendJson(response, 200, { ok: true });
+    const merged = await chatStateStore.merge(data);
+    sendJson(response, 200, { ok: true, state: merged });
     return;
   }
 
@@ -61,24 +75,31 @@ async function handleChatsApi(request, response) {
 
 createServer(async (request, response) => {
   const pathname = new URL(request.url ?? '/', `http://127.0.0.1:${port}`).pathname;
+  if (pathname === '/healthz') {
+    sendJson(response, 200, { ok: true });
+    return;
+  }
+
   if (pathname === '/api/chats') {
     try {
       await handleChatsApi(request, response);
-    } catch {
-      sendJson(response, 400, { error: 'Could not save chats' });
+    } catch (error) {
+      console.error('Chat API error:', error);
+      sendJson(response, 500, { error: 'Could not save chats' });
     }
     return;
   }
 
   const filePath = resolvePath(request.url ?? '/');
   if (!filePath) {
-    response.writeHead(404, { 'Content-Type': 'text/plain' });
-    response.end('Not found');
+    sendText(response, 404, 'Not found');
     return;
   }
 
   response.writeHead(200, {
-    'Content-Type': types[extname(filePath)] ?? 'application/octet-stream'
+    'Content-Type': types[extname(filePath)] ?? 'application/octet-stream',
+    'Referrer-Policy': 'no-referrer',
+    'X-Content-Type-Options': 'nosniff'
   });
   createReadStream(filePath).pipe(response);
 }).listen(port, host, () => {

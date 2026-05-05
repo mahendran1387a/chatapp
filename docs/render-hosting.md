@@ -23,6 +23,7 @@ Send that URL to friends so they can open the chat app from phones and computers
 - The app uses `/api/chats` on the same server to save messages.
 - The server uses Render's `PORT` environment variable automatically.
 - The server binds to `0.0.0.0`, which Render requires for public web services.
+- Render can use `/healthz` as the service health check endpoint.
 - When `DATABASE_URL` is set, messages are saved in Supabase.
 - When `DATABASE_URL` is not set, messages fall back to the local `.data/chats.json` file.
 - Do not put the database password into browser code. Put the full database connection string only in Render environment variables.
