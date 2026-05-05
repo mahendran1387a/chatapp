@@ -1,121 +1,15 @@
-const sampleContacts = [
-  {
-    id: 'dunes',
-    name: 'Dunes_KG1B@2026',
-    avatar: 'KG',
-    color: '#13a97b',
-    preview: 'This message was deleted',
-    time: '12:11 PM',
-    unread: 0,
-    favorite: true,
-    group: true,
-    messages: [
-      { id: 'dunes-1', direction: 'in', text: 'Hi, please check the class update.', time: '11:58 AM' },
-      { id: 'dunes-2', direction: 'out', text: 'Sure, I saw it. Thank you.', time: '12:02 PM' },
-      { id: 'dunes-3', direction: 'in', text: 'This message was deleted', time: '12:11 PM', deleted: true }
-    ]
-  },
-  {
-    id: 'hospital',
-    name: 'Millennium Hospital',
-    avatar: 'MH',
-    color: '#e34b86',
-    preview: 'Please mobile number and name',
-    time: '11:17 AM',
-    unread: 1,
-    favorite: false,
-    group: false,
-    messages: [
-      { id: 'hospital-1', direction: 'in', text: 'Please mobile number and name', time: '11:17 AM' }
-    ]
-  },
-  {
-    id: 'shonima',
-    name: 'Shonima Prakash Dunes KG1 A',
-    avatar: 'SP',
-    color: '#8f72d9',
-    preview: 'Video',
-    time: '10:32 AM',
-    unread: 0,
-    favorite: true,
-    group: false,
-    messages: [
-      { id: 'shonima-1', direction: 'out', text: 'Can you send the video?', time: '10:20 AM' },
-      { id: 'shonima-2', direction: 'in', text: 'Video', time: '10:32 AM' }
-    ]
-  },
-  {
-    id: 'himani',
-    name: 'Himani Nikki Sharma Vats',
-    avatar: 'HN',
-    color: '#b47c4f',
-    preview: 'He is fine. They both are keeping me super busy',
-    time: '10:19 AM',
-    unread: 0,
-    favorite: false,
-    group: false,
-    messages: [
-      { id: 'himani-1', direction: 'in', text: 'He is fine. They both are keeping me super busy', time: '10:19 AM' }
-    ]
-  },
-  {
-    id: 'dunes4c',
-    name: 'Dunes_4C@2026',
-    avatar: '4C',
-    color: '#ef9aa5',
-    preview: 'SasiRekha Supervisor 2B added +91 90797 90479',
-    time: '8:17 AM',
-    unread: 0,
-    favorite: false,
-    group: true,
-    messages: [
-      { id: 'dunes4c-1', direction: 'in', text: 'SasiRekha Supervisor 2B added +91 90797 90479', time: '8:17 AM' }
-    ]
-  },
-  {
-    id: 'hena',
-    name: 'Hena 402',
-    avatar: 'H',
-    color: '#4b9bd7',
-    preview: 'Yes I know',
-    time: '12:04 AM',
-    unread: 0,
-    favorite: false,
-    group: false,
-    messages: [
-      { id: 'hena-1', direction: 'out', text: 'Did you see the update?', time: '11:58 PM' },
-      { id: 'hena-2', direction: 'in', text: 'Yes I know', time: '12:04 AM' }
-    ]
-  },
-  {
-    id: 'sabeena',
-    name: 'Sabeena Nahyan',
-    avatar: 'SN',
-    color: '#c04444',
-    preview: 'Aama trump irukae loose',
-    time: 'Yesterday',
-    unread: 0,
-    favorite: false,
-    group: false,
-    messages: [
-      { id: 'sabeena-1', direction: 'in', text: 'Aama trump irukae loose', time: 'Yesterday' }
-    ]
-  },
-  {
-    id: 'clinic',
-    name: 'Yas Clinic Khalifa City',
-    avatar: 'YC',
-    color: '#76a661',
-    preview: 'Your appointment is confirmed',
-    time: 'Yesterday',
-    unread: 2,
-    favorite: false,
-    group: false,
-    messages: [
-      { id: 'clinic-1', direction: 'in', text: 'Your appointment is confirmed', time: 'Yesterday' }
-    ]
-  }
-];
+const sampleContacts = [];
+const referenceContactIds = new Set(['dunes', 'hospital', 'shonima', 'himani', 'dunes4c', 'hena', 'sabeena', 'clinic']);
+const referenceContactNames = new Set([
+  'Dunes_KG1B@2026',
+  'Millennium Hospital',
+  'Shonima Prakash Dunes KG1 A',
+  'Himani Nikki Sharma Vats',
+  'Dunes_4C@2026',
+  'Hena 402',
+  'Sabeena Nahyan',
+  'Yas Clinic Khalifa City'
+]);
 
 const sampleStatuses = {
   recent: [
@@ -616,8 +510,14 @@ function isValidContact(contact) {
   );
 }
 
+function isReferenceContact(contact) {
+  return referenceContactIds.has(contact.id) || referenceContactNames.has(contact.name);
+}
+
 export function createInitialState(savedState = {}) {
-  const savedContacts = Array.isArray(savedState.contacts) ? savedState.contacts.filter(isValidContact) : [];
+  const savedContacts = Array.isArray(savedState.contacts)
+    ? savedState.contacts.filter((contact) => isValidContact(contact) && !isReferenceContact(contact))
+    : [];
   const contacts = savedContacts.length ? structuredClone(savedContacts) : structuredClone(sampleContacts);
   const savedActiveContactId =
     typeof savedState.activeContactId === 'string' &&

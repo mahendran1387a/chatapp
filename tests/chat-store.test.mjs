@@ -16,17 +16,8 @@ import {
   switchSection
 } from '../src/chat-store.js';
 
-test('creates a default active conversation with sample friends', () => {
-  const state = createInitialState();
-
-  assert.equal(state.activeSection, 'chats');
-  assert.equal(state.activeContactId, 'dunes');
-  assert.equal(getActiveContact(state).name, 'Dunes_KG1B@2026');
-  assert.ok(state.contacts.length >= 8);
-});
-
-test('restores saved chats after reload', () => {
-  const savedContact = {
+function buildSavedContact(overrides = {}) {
+  return {
     id: 'aisha-saved',
     name: 'Aisha Saved',
     phone: '+971 50 123 4567',
@@ -39,8 +30,37 @@ test('restores saved chats after reload', () => {
     group: false,
     messages: [
       { id: 'aisha-saved-created', direction: 'in', text: 'New chat created with +971 50 123 4567', time: 'Now' }
-    ]
+    ],
+    ...overrides
   };
+}
+
+test('starts without reference chat names', () => {
+  const state = createInitialState();
+
+  assert.equal(state.activeSection, 'chats');
+  assert.equal(state.activeContactId, undefined);
+  assert.deepEqual(state.contacts, []);
+});
+
+test('removes reference chat names from saved state', () => {
+  const state = createInitialState({
+    activeContactId: 'dunes',
+    contacts: [
+      buildSavedContact({ id: 'dunes', name: 'Dunes_KG1B@2026' }),
+      buildSavedContact({ id: 'real-friend', name: 'Real Friend' })
+    ]
+  });
+
+  assert.deepEqual(
+    state.contacts.map((contact) => contact.name),
+    ['Real Friend']
+  );
+  assert.equal(state.activeContactId, 'real-friend');
+});
+
+test('restores saved chats after reload', () => {
+  const savedContact = buildSavedContact();
 
   const state = createInitialState({
     contacts: [savedContact],
@@ -53,17 +73,24 @@ test('restores saved chats after reload', () => {
 });
 
 test('filters contacts by search term and unread mode', () => {
-  const state = createInitialState();
+  const state = createInitialState({
+    contacts: [
+      buildSavedContact({ id: 'city-hospital', name: 'City Hospital', unread: 1 }),
+      buildSavedContact({ id: 'friend', name: 'Aisha Friend', unread: 0 })
+    ],
+    activeContactId: 'city-hospital'
+  });
 
   const hospital = filterContacts(state, { query: 'hospital', filter: 'all' });
   const unread = filterContacts(state, { query: '', filter: 'unread' });
 
-  assert.deepEqual(hospital.map((contact) => contact.name), ['Millennium Hospital']);
+  assert.deepEqual(hospital.map((contact) => contact.name), ['City Hospital']);
   assert.ok(unread.every((contact) => contact.unread > 0));
 });
 
 test('sends a message to the active contact without an automatic reply', () => {
-  const state = createInitialState();
+  const savedContact = buildSavedContact();
+  const state = createInitialState({ contacts: [savedContact], activeContactId: savedContact.id });
   const before = getActiveContact(state).messages.length;
 
   const updated = sendMessage(state, 'Are we meeting today?', { senderId: 'device-a' });
