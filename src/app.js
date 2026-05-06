@@ -198,6 +198,11 @@ function escapeAttribute(value) {
     .replaceAll('>', '&gt;');
 }
 
+function isTextEntryActive() {
+  const active = document.activeElement;
+  return Boolean(active?.matches('input, textarea, [contenteditable="true"]'));
+}
+
 function renderDetailView(view, type = 'action') {
   if (view.form === 'newChat') {
     renderNewChatForm(view);
@@ -569,32 +574,11 @@ function renderSettingsSearchResults() {
   `;
 }
 
-function renderLoggedOutPanel() {
-  return `
-    <div class="settings-logged-out">
-      <div class="settings-illustration"></div>
-      <h1>Logged out</h1>
-      <p>You logged out from this computer.</p>
-      <button class="detail-action" data-login-again>Log in again</button>
-    </div>
-  `;
-}
-
-function renderSettingsHome() {
+function renderSettingsScrollableContent() {
   const isSearchingSettings = settingsSearchQuery.trim().length > 0;
+  if (isSearchingSettings) return renderSettingsSearchResults();
+
   return `
-    <header class="panel-header">
-      <h1>Settings</h1>
-    </header>
-    <label class="search-box settings-search">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 4a5.5 5.5 0 0 1 4.38 8.83l4.15 4.14-1.06 1.06-4.14-4.15A5.5 5.5 0 1 1 9.5 4Zm0 1.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"/></svg>
-      <input id="settingsSearchInput" type="search" placeholder="Search settings" value="${escapeAttribute(settingsSearchQuery)}" autocomplete="off" />
-    </label>
-    <div class="settings-scroll">
-      ${
-        isSearchingSettings
-          ? renderSettingsSearchResults()
-          : `
       <div class="settings-notice" data-action="chooseNotifications">
         <span class="line-icon bulb-icon"></span>
         <span><strong>Choose your notifications</strong><small>Get notifications for messages, groups or your status. <b>Choose now</b></small></span>
@@ -637,8 +621,31 @@ function renderSettingsHome() {
           <span><strong>Log out</strong></span>
         </button>
       </div>
-      `
-      }
+  `;
+}
+
+function renderLoggedOutPanel() {
+  return `
+    <div class="settings-logged-out">
+      <div class="settings-illustration"></div>
+      <h1>Logged out</h1>
+      <p>You logged out from this computer.</p>
+      <button class="detail-action" data-login-again>Log in again</button>
+    </div>
+  `;
+}
+
+function renderSettingsHome() {
+  return `
+    <header class="panel-header">
+      <h1>Settings</h1>
+    </header>
+    <label class="search-box settings-search">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 4a5.5 5.5 0 0 1 4.38 8.83l4.15 4.14-1.06 1.06-4.14-4.15A5.5 5.5 0 1 1 9.5 4Zm0 1.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"/></svg>
+      <input id="settingsSearchInput" type="text" placeholder="Search settings" value="${escapeAttribute(settingsSearchQuery)}" autocomplete="off" />
+    </label>
+    <div class="settings-scroll">
+      ${renderSettingsScrollableContent()}
     </div>
   `;
 }
@@ -898,6 +905,7 @@ async function hydrateChatsFromServer() {
     // Browser storage can be unavailable in incognito.
   }
   if (activeAction === 'newChat') return;
+  if (isTextEntryActive()) return;
   renderAll();
 }
 
@@ -1263,11 +1271,12 @@ document.addEventListener('input', (event) => {
   if (!settingsInput) return;
 
   settingsSearchQuery = settingsInput.value;
-  renderSettingsPanel();
-  const refreshedInput = document.querySelector('#settingsSearchInput');
-  if (!refreshedInput) return;
-  refreshedInput.focus();
-  refreshedInput.setSelectionRange(settingsSearchQuery.length, settingsSearchQuery.length);
+  const settingsScroll = document.querySelector('.settings-scroll');
+  if (settingsScroll) {
+    settingsScroll.innerHTML = renderSettingsScrollableContent();
+  } else {
+    renderSettingsPanel();
+  }
 });
 
 document.addEventListener('input', (event) => {

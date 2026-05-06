@@ -241,9 +241,23 @@ test('new chat form keeps typed draft values across re-renders and refreshes', (
     assert.match(contents, /window\.localStorage\.removeItem\(newChatDraftStorageKey\)/);
     assert.match(contents, /const newChatDraft = loadNewChatDraft\(\)/);
     assert.match(contents, /newChatDraft\.name = newChatInput\.value/);
-    assert.match(contents, /if \(activeAction === 'newChat'\) return;\s+renderAll\(\);/);
+    assert.match(contents, /if \(activeAction === 'newChat'\) return;/);
     assert.match(contents, /value="\$\{escapeAttribute\(newChatDraft\.name\)\}"/);
     assert.match(contents, /value="\$\{escapeAttribute\(newChatDraft\.phone\)\}"/);
+  }
+});
+
+test('text inputs keep focus during live sync and settings search typing', () => {
+  for (const relativePath of [
+    '../src/app.js',
+    '../android/app/src/main/assets/www/src/app.js'
+  ]) {
+    const contents = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
+    assert.match(contents, /function isTextEntryActive\(\)/);
+    assert.match(contents, /if \(isTextEntryActive\(\)\) return;\s+renderAll\(\);/);
+    assert.match(contents, /function renderSettingsScrollableContent\(\)/);
+    assert.match(contents, /settingsScroll\.innerHTML = renderSettingsScrollableContent\(\)/);
+    assert.doesNotMatch(contents, /refreshedInput\.focus\(\)/);
   }
 });
 
