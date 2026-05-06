@@ -229,13 +229,17 @@ test('creates a new chat from a friend name and phone number', () => {
   assert.equal(contact.messages[0].text, 'New chat created with +971 50 123 4567');
 });
 
-test('new chat form keeps typed draft values across re-renders', () => {
+test('new chat form keeps typed draft values across re-renders and refreshes', () => {
   for (const relativePath of [
     '../src/app.js',
     '../android/app/src/main/assets/www/src/app.js'
   ]) {
     const contents = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
-    assert.match(contents, /const newChatDraft = \{/);
+    assert.match(contents, /const newChatDraftStorageKey = 'chatapp\.newChatDraft\.v1'/);
+    assert.match(contents, /function loadNewChatDraft\(\)/);
+    assert.match(contents, /function saveNewChatDraft\(\)/);
+    assert.match(contents, /window\.localStorage\.removeItem\(newChatDraftStorageKey\)/);
+    assert.match(contents, /const newChatDraft = loadNewChatDraft\(\)/);
     assert.match(contents, /newChatDraft\.name = newChatInput\.value/);
     assert.match(contents, /value="\$\{escapeAttribute\(newChatDraft\.name\)\}"/);
     assert.match(contents, /value="\$\{escapeAttribute\(newChatDraft\.phone\)\}"/);

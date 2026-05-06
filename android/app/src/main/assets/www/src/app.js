@@ -16,6 +16,7 @@ import {
 
 const savedChatStorageKey = 'chatapp.savedChats.v1';
 const clientIdStorageKey = 'chatapp.clientId.v1';
+const newChatDraftStorageKey = 'chatapp.newChatDraft.v1';
 const serverChatStorageUrl = '/api/chats';
 const syncIntervalMs = 1500;
 let lastChatSnapshot = '';
@@ -69,6 +70,37 @@ async function loadServerChatState() {
     return await response.json();
   } catch {
     return {};
+  }
+}
+
+function loadNewChatDraft() {
+  try {
+    const saved = window.localStorage.getItem(newChatDraftStorageKey);
+    const parsed = saved ? JSON.parse(saved) : {};
+    return {
+      name: typeof parsed.name === 'string' ? parsed.name : '',
+      phone: typeof parsed.phone === 'string' ? parsed.phone : ''
+    };
+  } catch {
+    return { name: '', phone: '' };
+  }
+}
+
+function saveNewChatDraft() {
+  try {
+    window.localStorage.setItem(newChatDraftStorageKey, JSON.stringify(newChatDraft));
+  } catch {
+    // Browser storage can be unavailable in incognito.
+  }
+}
+
+function clearNewChatDraft() {
+  newChatDraft.name = '';
+  newChatDraft.phone = '';
+  try {
+    window.localStorage.removeItem(newChatDraftStorageKey);
+  } catch {
+    // Browser storage can be unavailable in incognito.
   }
 }
 
@@ -131,10 +163,7 @@ const statusValues = {
   'Status text': '',
   'Background color': 'Green'
 };
-const newChatDraft = {
-  name: '',
-  phone: ''
-};
+const newChatDraft = loadNewChatDraft();
 
 const chatList = document.querySelector('#chatList');
 const searchInput = document.querySelector('#searchInput');
@@ -1249,6 +1278,7 @@ document.addEventListener('input', (event) => {
   } else {
     newChatDraft.phone = newChatInput.value;
   }
+  saveNewChatDraft();
 });
 
 document.addEventListener('submit', (event) => {
@@ -1291,8 +1321,7 @@ document.addEventListener('submit', (event) => {
     mobileConversationOpen = true;
     state = createContactChat(state, { name, phone });
     saveChatState();
-    newChatDraft.name = '';
-    newChatDraft.phone = '';
+    clearNewChatDraft();
     newChatForm.closest('.action-dialog-backdrop')?.remove();
     renderAll();
     showToast('Chat saved');
