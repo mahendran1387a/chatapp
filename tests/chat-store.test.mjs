@@ -13,7 +13,9 @@ import {
   getSettingsPage,
   deleteContactChat,
   deleteLatestContactMessage,
+  deleteMessage,
   updateContactChat,
+  updateMessage,
   searchSettings,
   toggleChannelFollow,
   sendMessage,
@@ -253,6 +255,7 @@ test('deletes a username contact from the chat list', () => {
 
   assert.deepEqual(updated.contacts.map((contact) => contact.name), ['Friend']);
   assert.equal(updated.activeContactId, 'friend');
+  assert.ok(updated.deletedContactIds.includes('aadhish'));
 });
 
 test('edits a username contact name and phone number', () => {
@@ -269,6 +272,25 @@ test('edits a username contact name and phone number', () => {
   assert.equal(updated.activeContactId, contact.id);
 });
 
+test('edits and deletes a selected chat message by right-click target', () => {
+  const contact = buildSavedContact({
+    id: 'aadhish',
+    name: 'aadhish',
+    messages: [
+      { id: 'msg-1', direction: 'out', text: 'paper', time: '10:00 PM' },
+      { id: 'msg-2', direction: 'in', text: 'hello', time: '10:01 PM' }
+    ]
+  });
+  const state = createInitialState({ contacts: [contact], activeContactId: contact.id });
+
+  const edited = updateMessage(state, contact.id, 'msg-1', 'paper is not there');
+  const deleted = deleteMessage(edited, contact.id, 'msg-2');
+
+  assert.equal(edited.contacts[0].messages[0].text, 'paper is not there');
+  assert.equal(deleted.contacts[0].messages[1].text, 'This message was deleted');
+  assert.equal(deleted.contacts[0].messages[1].deleted, true);
+});
+
 test('chat contact actions open from right click or name press instead of permanent row buttons', () => {
   const contents = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
 
@@ -276,6 +298,16 @@ test('chat contact actions open from right click or name press instead of perman
   assert.match(contents, /data-contact-menu/);
   assert.match(contents, /id="editContactForm"/);
   assert.doesNotMatch(contents, /class="chat-row-action"/);
+});
+
+test('message actions open from right-clicking a message bubble only', () => {
+  const contents = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
+
+  assert.match(contents, /data-message-id/);
+  assert.match(contents, /messages\.addEventListener\('contextmenu'/);
+  assert.match(contents, /data-message-menu-action="edit"/);
+  assert.match(contents, /id="editMessageForm"/);
+  assert.doesNotMatch(contents, /data-contact-menu-action="delete-message"/);
 });
 
 test('new chat form keeps typed draft values across re-renders and refreshes', () => {

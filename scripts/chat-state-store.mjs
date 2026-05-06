@@ -29,19 +29,36 @@ function mergeContact(existingContact, incomingContact) {
 }
 
 export function mergeChatState(existing = {}, incoming = {}) {
+  const deletedContactIds = [
+    ...new Set([
+      ...(existing.deletedContactIds ?? []),
+      ...(incoming.deletedContactIds ?? [])
+    ].filter((id) => typeof id === 'string'))
+  ];
+  const deletedIdSet = new Set(deletedContactIds);
   const contactsById = new Map();
   for (const contact of existing.contacts ?? []) {
+    if (deletedIdSet.has(contact?.id)) continue;
     if (contact?.id) contactsById.set(contact.id, contact);
   }
   for (const contact of incoming.contacts ?? []) {
     if (!contact?.id) continue;
+    if (deletedIdSet.has(contact.id)) continue;
     contactsById.set(contact.id, mergeContact(contactsById.get(contact.id), contact));
   }
+  const contacts = [...contactsById.values()];
+  const activeContactId = contacts.some((contact) => contact.id === incoming.activeContactId)
+    ? incoming.activeContactId
+    : contacts.some((contact) => contact.id === existing.activeContactId)
+      ? existing.activeContactId
+      : contacts[0]?.id;
 
   return {
     ...existing,
     ...incoming,
-    contacts: [...contactsById.values()]
+    activeContactId,
+    deletedContactIds,
+    contacts
   };
 }
 

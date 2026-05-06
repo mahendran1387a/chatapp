@@ -2,7 +2,7 @@ import {
   createContactChat,
   createInitialState,
   deleteContactChat,
-  deleteLatestContactMessage,
+  deleteMessage,
   filterContacts,
   getActionView,
   getActiveContact,
@@ -14,7 +14,8 @@ import {
   sendMessage,
   switchSection,
   toggleChannelFollow,
-  updateContactChat
+  updateContactChat,
+  updateMessage
 } from './chat-store.js';
 
 const savedChatStorageKey = 'chatapp.savedChats.v1';
@@ -44,6 +45,7 @@ function getClientId() {
 function getPersistedChatPayload() {
   return {
     activeContactId: state.activeContactId,
+    deletedContactIds: state.deletedContactIds ?? [],
     contacts: state.contacts
   };
 }
@@ -143,6 +145,7 @@ let currentFilter = 'all';
 let activeAction = null;
 let activeSettingsPage = null;
 let activeContactMenuId = null;
+let activeMessageMenu = null;
 let settingsSearchQuery = '';
 let isLoggedOut = false;
 let mobileConversationOpen = false;
@@ -198,6 +201,13 @@ function escapeAttribute(value) {
   return String(value)
     .replaceAll('&', '&amp;')
     .replaceAll('"', '&quot;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;');
 }
@@ -714,8 +724,8 @@ function renderConversation() {
                 : 'in'
               : message.direction;
             return `
-              <div class="bubble ${direction} ${message.deleted ? 'deleted' : ''}">
-                ${message.deleted ? 'This message was deleted' : message.text}
+              <div class="bubble ${direction} ${message.deleted ? 'deleted' : ''}" data-message-id="${message.id}" data-contact-id="${contact.id}">
+                ${message.deleted ? 'This message was deleted' : escapeHtml(message.text)}
                 <time>${message.time}</time>
               </div>
             `;
@@ -753,6 +763,16 @@ function renderConversation() {
     input.value = '';
     renderAll();
     conversation.querySelector('#messageInput').focus();
+  });
+
+  messages.addEventListener('contextmenu', (event) => {
+    const bubble = event.target.closest('[data-message-id]');
+    if (!bubble) return;
+    event.preventDefault();
+    showMessageMenu(bubble.dataset.contactId, bubble.dataset.messageId, {
+      x: event.clientX,
+      y: event.clientY
+    });
   });
 }
 
@@ -889,6 +909,7 @@ async function hydrateChatsFromServer() {
   if (!Array.isArray(serverState.contacts) || !serverState.contacts.length) return;
   const serverSnapshot = stringifyChatPayload({
     activeContactId: serverState.activeContactId,
+    deletedContactIds: serverState.deletedContactIds ?? [],
     contacts: serverState.contacts
   });
   if (serverSnapshot === lastChatSnapshot) return;
@@ -899,10 +920,12 @@ async function hydrateChatsFromServer() {
     activeContactId: syncedState.contacts.some((contact) => contact.id === state.activeContactId)
       ? state.activeContactId
       : syncedState.activeContactId,
+    deletedContactIds: syncedState.deletedContactIds,
     contacts: syncedState.contacts
   };
   rememberChatSnapshot({
     activeContactId: syncedState.activeContactId,
+    deletedContactIds: syncedState.deletedContactIds,
     contacts: syncedState.contacts
   });
   try {
@@ -937,14 +960,24 @@ function closeContactMenu() {
   document.querySelector('.contact-context-menu')?.remove();
 }
 
+function closeMessageMenu() {
+  activeMessageMenu = null;
+  document.querySelector('.message-context-menu')?.remove();
+}
+
 function getContactById(contactId) {
   return state.contacts.find((contact) => contact.id === contactId);
+}
+
+function getMessageById(contactId, messageId) {
+  return getContactById(contactId)?.messages.find((message) => message.id === messageId);
 }
 
 function showContactMenu(contactId, anchor = {}) {
   const contact = getContactById(contactId);
   if (!contact) return;
   closeContactMenu();
+  closeMessageMenu();
   activeContactMenuId = contactId;
 
   const menu = document.createElement('div');
@@ -954,8 +987,30 @@ function showContactMenu(contactId, anchor = {}) {
     <strong>${contact.name}</strong>
     <small>${contact.phone || 'No phone number saved'}</small>
     <button type="button" data-contact-menu-action="edit" data-contact-id="${contact.id}">Edit name and phone</button>
-    <button type="button" data-contact-menu-action="delete-message" data-contact-id="${contact.id}">Delete latest message</button>
     <button type="button" class="danger-row" data-contact-menu-action="delete-contact" data-contact-id="${contact.id}">Delete username</button>
+  `;
+  document.body.append(menu);
+
+  const rect = menu.getBoundingClientRect();
+  const left = Math.min(anchor.x ?? window.innerWidth / 2, window.innerWidth - rect.width - 12);
+  const top = Math.min(anchor.y ?? window.innerHeight / 2, window.innerHeight - rect.height - 12);
+  menu.style.left = `${Math.max(12, left)}px`;
+  menu.style.top = `${Math.max(12, top)}px`;
+}
+
+function showMessageMenu(contactId, messageId, anchor = {}) {
+  const message = getMessageById(contactId, messageId);
+  if (!message) return;
+  closeMessageMenu();
+  closeContactMenu();
+  activeMessageMenu = { contactId, messageId };
+
+  const menu = document.createElement('div');
+  menu.className = 'message-context-menu contact-context-menu';
+  menu.setAttribute('role', 'menu');
+  menu.innerHTML = `
+    <button type="button" data-message-menu-action="edit" data-contact-id="${contactId}" data-message-id="${messageId}">Edit message</button>
+    <button type="button" class="danger-row" data-message-menu-action="delete" data-contact-id="${contactId}" data-message-id="${messageId}">Delete message</button>
   `;
   document.body.append(menu);
 
@@ -1003,6 +1058,42 @@ function showEditContactDialog(contactId) {
     }
   });
   backdrop.querySelector('input[name="name"]')?.focus();
+}
+
+function showEditMessageDialog(contactId, messageId) {
+  const message = getMessageById(contactId, messageId);
+  if (!message) return;
+  closeMessageMenu();
+  const existing = document.querySelector('.action-dialog-backdrop');
+  if (existing) existing.remove();
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'action-dialog-backdrop';
+  backdrop.innerHTML = `
+    <section class="action-dialog menu-dialog" role="dialog" aria-label="Edit message">
+      <button class="dialog-close" aria-label="Close">x</button>
+      <form class="business-profile-form dialog-form" id="editMessageForm" data-contact-id="${contactId}" data-message-id="${messageId}">
+        <h2>Edit message</h2>
+        <p>Change this message text.</p>
+        <div class="business-fields">
+          <label class="profile-field">
+            <span>Message</span>
+            <textarea name="message" rows="4" autocomplete="off" required>${escapeHtml(message.deleted ? '' : message.text)}</textarea>
+          </label>
+        </div>
+        <button class="detail-action" type="submit">Save message</button>
+      </form>
+    </section>
+  `;
+  document.body.append(backdrop);
+  backdrop.addEventListener('click', (event) => {
+    if (event.target === backdrop || event.target.closest('.dialog-close')) {
+      backdrop.remove();
+    }
+  });
+  const input = backdrop.querySelector('textarea[name="message"]');
+  input?.focus();
+  input?.select();
 }
 
 function showActionDialog(view) {
@@ -1248,14 +1339,6 @@ document.addEventListener('click', (event) => {
       showEditContactDialog(contactId);
       return;
     }
-    if (action === 'delete-message') {
-      state = deleteLatestContactMessage(state, contactId);
-      closeContactMenu();
-      saveChatState();
-      renderAll();
-      showToast('Message deleted');
-      return;
-    }
     state = deleteContactChat(state, contactId);
     closeContactMenu();
     saveChatState();
@@ -1264,8 +1347,27 @@ document.addEventListener('click', (event) => {
     return;
   }
 
+  const messageMenuAction = event.target.closest('[data-message-menu-action]');
+  if (messageMenuAction) {
+    const contactId = messageMenuAction.dataset.contactId;
+    const messageId = messageMenuAction.dataset.messageId;
+    if (messageMenuAction.dataset.messageMenuAction === 'edit') {
+      showEditMessageDialog(contactId, messageId);
+      return;
+    }
+    state = deleteMessage(state, contactId, messageId);
+    closeMessageMenu();
+    saveChatState();
+    renderAll();
+    showToast('Message deleted');
+    return;
+  }
+
   if (activeContactMenuId && !event.target.closest('.contact-context-menu')) {
     closeContactMenu();
+  }
+  if (activeMessageMenu && !event.target.closest('.message-context-menu')) {
+    closeMessageMenu();
   }
 
   const discoverChannel = event.target.closest('[data-discover-channel]');
@@ -1422,7 +1524,10 @@ document.addEventListener('input', (event) => {
 });
 
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') closeContactMenu();
+  if (event.key === 'Escape') {
+    closeContactMenu();
+    closeMessageMenu();
+  }
 });
 
 document.addEventListener('submit', (event) => {
@@ -1487,6 +1592,28 @@ document.addEventListener('submit', (event) => {
     editContactForm.closest('.action-dialog-backdrop')?.remove();
     renderAll();
     showToast('Contact saved');
+    return;
+  }
+
+  const editMessageForm = event.target.closest('#editMessageForm');
+  if (editMessageForm) {
+    event.preventDefault();
+    const formData = new FormData(editMessageForm);
+    const message = String(formData.get('message') ?? '');
+    if (!message.trim()) {
+      showToast('Enter a message');
+      return;
+    }
+    state = updateMessage(
+      state,
+      editMessageForm.dataset.contactId,
+      editMessageForm.dataset.messageId,
+      message
+    );
+    saveChatState();
+    editMessageForm.closest('.action-dialog-backdrop')?.remove();
+    renderAll();
+    showToast('Message saved');
     return;
   }
 

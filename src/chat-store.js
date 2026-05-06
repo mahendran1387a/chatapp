@@ -525,7 +525,12 @@ export function createInitialState(savedState = {}) {
   const savedContacts = Array.isArray(savedState.contacts)
     ? savedState.contacts.filter((contact) => isValidContact(contact) && !isReferenceContact(contact))
     : [];
-  const contacts = savedContacts.length ? structuredClone(savedContacts) : structuredClone(sampleContacts);
+  const deletedContactIds = Array.isArray(savedState.deletedContactIds)
+    ? [...new Set(savedState.deletedContactIds.filter((id) => typeof id === 'string'))]
+    : [];
+  const deletedIdSet = new Set(deletedContactIds);
+  const contacts = (savedContacts.length ? structuredClone(savedContacts) : structuredClone(sampleContacts))
+    .filter((contact) => !deletedIdSet.has(contact.id));
   const savedActiveContactId =
     typeof savedState.activeContactId === 'string' &&
     contacts.some((contact) => contact.id === savedState.activeContactId)
@@ -535,6 +540,7 @@ export function createInitialState(savedState = {}) {
   return {
     activeSection: 'chats',
     activeContactId: savedActiveContactId,
+    deletedContactIds,
     contacts,
     statuses: structuredClone(sampleStatuses),
     channels: structuredClone(sampleChannels)
@@ -651,6 +657,7 @@ export function createContactChat(state, { name, phone }) {
     ...state,
     activeSection: 'chats',
     activeContactId: id,
+    deletedContactIds: (state.deletedContactIds ?? []).filter((deletedId) => deletedId !== id),
     contacts: [newContact, ...state.contacts]
   };
 }
@@ -686,9 +693,11 @@ export function deleteContactChat(state, contactId) {
   const activeContactId = state.activeContactId === contactId
     ? contacts[0]?.id
     : state.activeContactId;
+  const deletedContactIds = [...new Set([...(state.deletedContactIds ?? []), contactId])];
 
   return {
     ...state,
+    deletedContactIds,
     activeContactId,
     contacts
   };
@@ -717,6 +726,51 @@ export function updateContactChat(state, contactId, { name, phone }) {
           }
         : contact
     )
+  };
+}
+
+export function updateMessage(state, contactId, messageId, text) {
+  const cleanText = text.trim();
+  if (!cleanText) return state;
+
+  return {
+    ...state,
+    contacts: state.contacts.map((contact) => {
+      if (contact.id !== contactId) return contact;
+      const messages = contact.messages.map((message) =>
+        message.id === messageId
+          ? { ...message, text: cleanText, deleted: false }
+          : message
+      );
+      const lastMessage = messages.at(-1);
+      return {
+        ...contact,
+        deleted: false,
+        preview: lastMessage?.deleted ? 'This message was deleted' : lastMessage?.text ?? contact.preview,
+        messages
+      };
+    })
+  };
+}
+
+export function deleteMessage(state, contactId, messageId) {
+  return {
+    ...state,
+    contacts: state.contacts.map((contact) => {
+      if (contact.id !== contactId) return contact;
+      const messages = contact.messages.map((message) =>
+        message.id === messageId
+          ? { ...message, text: 'This message was deleted', deleted: true }
+          : message
+      );
+      const lastMessage = messages.at(-1);
+      return {
+        ...contact,
+        deleted: lastMessage?.deleted ?? contact.deleted,
+        preview: lastMessage?.deleted ? 'This message was deleted' : lastMessage?.text ?? contact.preview,
+        messages
+      };
+    })
   };
 }
 

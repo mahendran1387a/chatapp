@@ -79,6 +79,27 @@ test('merges incoming chat saves without losing existing messages', () => {
   );
 });
 
+test('deleted contact ids prevent old server copies from returning', () => {
+  const existing = {
+    activeContactId: 'aadhish',
+    contacts: [
+      { id: 'aadhish', name: 'aadhish', messages: [{ id: 'm1', text: 'paper' }] },
+      { id: 'friend', name: 'Friend', messages: [] }
+    ]
+  };
+  const incoming = {
+    activeContactId: 'friend',
+    deletedContactIds: ['aadhish'],
+    contacts: [{ id: 'friend', name: 'Friend', messages: [] }]
+  };
+
+  const merged = mergeChatState(existing, incoming);
+
+  assert.deepEqual(merged.deletedContactIds, ['aadhish']);
+  assert.deepEqual(merged.contacts.map((contact) => contact.id), ['friend']);
+  assert.equal(merged.activeContactId, 'friend');
+});
+
 test('store merge serializes saves and preserves messages from parallel clients', async () => {
   const root = await mkdtemp(join(tmpdir(), 'chatapp-store-'));
   try {
