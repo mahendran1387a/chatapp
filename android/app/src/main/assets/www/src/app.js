@@ -680,13 +680,26 @@ function renderConversation() {
     </div>
     <form class="composer" id="composer">
       <button type="button" title="Attach" aria-label="Attach" data-action="attach">+</button>
-      <input id="messageInput" autocomplete="off" placeholder="Type a message" />
+      <textarea id="messageInput" rows="1" autocomplete="off" placeholder="Type a message" spellcheck="true"></textarea>
       <button type="submit" title="Send" aria-label="Send">➤</button>
     </form>
   `;
 
   const messages = conversation.querySelector('#messages');
   messages.scrollTop = messages.scrollHeight;
+  const resizeComposer = () => {
+    const input = conversation.querySelector('#messageInput');
+    input.style.height = 'auto';
+    input.style.height = `${Math.min(input.scrollHeight, 160)}px`;
+  };
+  conversation.querySelector('#messageInput').addEventListener('input', resizeComposer);
+  conversation.querySelector('#messageInput').addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+      event.preventDefault();
+      conversation.querySelector('#composer').requestSubmit();
+    }
+  });
+  resizeComposer();
   conversation.querySelector('#composer').addEventListener('submit', (event) => {
     event.preventDefault();
     const input = conversation.querySelector('#messageInput');

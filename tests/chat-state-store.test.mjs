@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -28,6 +28,19 @@ test('file chat state store saves and reloads shared chat payloads', async () =>
     await store.write(payload);
 
     assert.deepEqual(await store.read(), payload);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('file chat state store reads JSON files that include a UTF-8 BOM', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'chatapp-store-'));
+  try {
+    await mkdir(join(root, '.data'), { recursive: true });
+    await writeFile(join(root, '.data', 'chats.json'), `\uFEFF${JSON.stringify({ contacts: [] })}`, 'utf8');
+    const store = createChatStateStore({ root });
+
+    assert.deepEqual(await store.read(), { contacts: [] });
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -5,6 +5,10 @@ import pg from 'pg';
 
 const sharedStateId = 'shared';
 
+function parseJsonDocument(text) {
+  return JSON.parse(text.replace(/^\uFEFF/, ''));
+}
+
 function mergeMessages(existingMessages = [], incomingMessages = []) {
   const messagesById = new Map();
   for (const message of existingMessages) {
@@ -61,7 +65,7 @@ function createFileStore(chatsFile) {
   return {
     async read() {
       if (!existsSync(chatsFile)) return {};
-      return JSON.parse(await readFile(chatsFile, 'utf8'));
+      return parseJsonDocument(await readFile(chatsFile, 'utf8'));
     },
     async write(payload) {
       await mkdir(dirname(chatsFile), { recursive: true });

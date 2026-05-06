@@ -2,6 +2,7 @@ import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, normalize } from 'node:path';
 import { createChatStateStore } from './chat-state-store.mjs';
+import { readRequestBody } from './http-utils.mjs';
 
 const root = process.cwd();
 const port = Number(process.env.PORT ?? 4173);
@@ -45,16 +46,6 @@ function sendText(response, status, text) {
   response.end(text);
 }
 
-async function readRequestBody(request) {
-  const chunks = [];
-  for await (const chunk of request) {
-    chunks.push(chunk);
-    const size = chunks.reduce((total, item) => total + item.length, 0);
-    if (size > 1024 * 1024) throw new Error('Request body too large');
-  }
-  return Buffer.concat(chunks).toString('utf8');
-}
-
 async function handleChatsApi(request, response) {
   if (request.method === 'GET') {
     sendJson(response, 200, await chatStateStore.read());
@@ -85,7 +76,7 @@ createServer(async (request, response) => {
       await handleChatsApi(request, response);
     } catch (error) {
       console.error('Chat API error:', error);
-      sendJson(response, 500, { error: 'Could not save chats' });
+      sendJson(response, error.statusCode ?? 500, { error: 'Could not save chats' });
     }
     return;
   }

@@ -1682,7 +1682,7 @@ button {
   display: grid;
   grid-template-columns: 42px 1fr 42px;
   gap: 10px;
-  align-items: center;
+  align-items: end;
   padding: 10px 16px;
   background: #f0f2f5;
 }
@@ -1702,14 +1702,18 @@ button {
   background: #dfe3e7;
 }
 
-.composer input {
+.composer textarea {
   width: 100%;
   min-width: 0;
-  height: 42px;
-  padding: 0 16px;
+  min-height: 42px;
+  max-height: 160px;
+  padding: 11px 16px;
   border: 0;
-  border-radius: 999px;
+  border-radius: 21px;
   outline: 0;
+  line-height: 1.35;
+  overflow-y: auto;
+  resize: none;
 }
 
 @media (max-width: 1180px) {
@@ -1937,8 +1941,10 @@ button {
     height: 38px;
   }
 
-  .composer input {
-    height: 38px;
+  .composer textarea {
+    min-height: 38px;
     padding: 0 13px;
+    padding-top: 9px;
+    padding-bottom: 9px;
   }
 }
