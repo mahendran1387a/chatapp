@@ -45,9 +45,12 @@ test('starts without reference chat names', () => {
 
 test('removes reference chat names from saved state', () => {
   const state = createInitialState({
-    activeContactId: 'dunes',
+    activeContactId: 'sangavi-love-1778002802119',
     contacts: [
       buildSavedContact({ id: 'dunes', name: 'Dunes_KG1B@2026' }),
+      buildSavedContact({ id: 'aadhish-1778003171685', name: 'Aadhish' }),
+      buildSavedContact({ id: 'sangavi-love-1778002802119', name: 'Sangavi Love' }),
+      buildSavedContact({ id: 'live-sync-contact', name: 'Live Sync Contact' }),
       buildSavedContact({ id: 'real-friend', name: 'Real Friend' })
     ]
   });
@@ -107,7 +110,8 @@ test('switches between chat and status sections', () => {
   const updated = switchSection(state, 'status');
 
   assert.equal(updated.activeSection, 'status');
-  assert.notEqual(updated.statuses.recent.length, 0);
+  assert.deepEqual(updated.statuses.recent, []);
+  assert.deepEqual(updated.statuses.viewed, []);
 });
 
 test('includes discoverable channels and switches to channels section', () => {

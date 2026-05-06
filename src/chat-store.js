@@ -1,5 +1,17 @@
 const sampleContacts = [];
-const referenceContactIds = new Set(['dunes', 'hospital', 'shonima', 'himani', 'dunes4c', 'hena', 'sabeena', 'clinic']);
+const referenceContactIds = new Set([
+  'dunes',
+  'hospital',
+  'shonima',
+  'himani',
+  'dunes4c',
+  'hena',
+  'sabeena',
+  'clinic',
+  'aadhish-1778003171685',
+  'sangavi-love-1778002802119',
+  'live-sync-contact'
+]);
 const referenceContactNames = new Set([
   'Dunes_KG1B@2026',
   'Millennium Hospital',
@@ -8,20 +20,15 @@ const referenceContactNames = new Set([
   'Dunes_4C@2026',
   'Hena 402',
   'Sabeena Nahyan',
-  'Yas Clinic Khalifa City'
+  'Yas Clinic Khalifa City',
+  'Aadhish',
+  'Sangavi Love',
+  'Live Sync Contact'
 ]);
 
 const sampleStatuses = {
-  recent: [
-    { id: 'arsha', name: 'Arsha 302 Sarath', time: 'Today at 2:04 PM', color: '#15b36d' },
-    { id: 'roja', name: 'Roja .Park Friend', time: 'Yesterday at 8:01 PM', color: '#20b972' },
-    { id: 'rini', name: 'Rini KG1A Ruhani Mom', time: 'Yesterday at 7:31 PM', color: '#23bf78' },
-    { id: 'vinitha', name: 'VINITHA Shivanya MOM, Time Master', time: 'Yesterday at 6:15 PM', color: '#14a865' },
-    { id: 'altalm', name: 'Altalm Bright Bells Arabic Tuition', time: 'Yesterday at 6:03 PM', color: '#21b979' }
-  ],
-  viewed: [
-    { id: 'devi', name: 'Devi Somasundaram Mom', time: 'Today at 10:34 AM', color: '#d7d7d7' }
-  ]
+  recent: [],
+  viewed: []
 };
 
 const sampleChannels = [
