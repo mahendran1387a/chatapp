@@ -1,19 +1,19 @@
+Public chat app link:
+
+https://chatapp-c4a7.onrender.com
+
+Use this link for phones, iPhone, computer, and friends outside your home network.
+
 Local chat app link on this computer:
 
 http://127.0.0.1:4173
 
-This opens the app running on this computer only.
-
-Public friends link:
-
-The old saved link https://chatapp-web.onrender.com is NOT this app right now. It opens a React App page.
-
-To get the real public link:
-1. Open Render Dashboard.
-2. Open the Web Service connected to this GitHub repo:
-   https://github.com/mahendran1387a/chatapp
-3. Copy that service URL.
+This local link opens the app running on this computer only.
 
 Do not share http://127.0.0.1:4173 with friends. That address only works on the computer where the app is running locally.
 
-For a link that will not change, keep the Render service name the same or connect a custom domain to Render.
+Important:
+- Keep the Render service named chatapp.
+- Do not delete or rename the Render service if you want this link to stay.
+- On Render free plan, the app can sleep when nobody uses it. The link stays the same, but it can take a little time to wake up.
+- For the strongest forever link, connect a custom domain to Render.

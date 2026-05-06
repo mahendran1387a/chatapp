@@ -10,21 +10,23 @@ This app is ready to deploy as a Render Web Service.
 4. Render will read `render.yaml`.
 5. Deploy the `chatapp-web` service.
 
-The app is currently available locally at:
+The public chat app URL is:
+
+```text
+https://chatapp-c4a7.onrender.com
+```
+
+Send that URL to friends so they can open the chat app from phones and computers.
+
+The local development URL is:
 
 ```text
 http://127.0.0.1:4173
 ```
 
-That local URL is only for this computer.
+Do not share the local URL with friends. It only works on the computer where the app is running locally.
 
-Important: the previously saved URL `https://chatapp-web.onrender.com` is not this app right now. It returns a Create React App page. To share with friends, open Render and copy the public URL from the Web Service connected to:
-
-```text
-https://github.com/mahendran1387a/chatapp
-```
-
-After you copy the correct Render URL, save it in `PUBLIC_CHAT_LINK.txt`.
+The same public link is also saved in `PUBLIC_CHAT_LINK.txt` and `Open Chat App Online.url`.
 
 ## Notes
 
