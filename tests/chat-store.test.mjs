@@ -241,6 +241,7 @@ test('new chat form keeps typed draft values across re-renders and refreshes', (
     assert.match(contents, /window\.localStorage\.removeItem\(newChatDraftStorageKey\)/);
     assert.match(contents, /const newChatDraft = loadNewChatDraft\(\)/);
     assert.match(contents, /newChatDraft\.name = newChatInput\.value/);
+    assert.match(contents, /if \(activeAction === 'newChat'\) return;\s+renderAll\(\);/);
     assert.match(contents, /value="\$\{escapeAttribute\(newChatDraft\.name\)\}"/);
     assert.match(contents, /value="\$\{escapeAttribute\(newChatDraft\.phone\)\}"/);
   }

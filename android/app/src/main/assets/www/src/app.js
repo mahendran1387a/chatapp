@@ -897,6 +897,7 @@ async function hydrateChatsFromServer() {
   } catch {
     // Browser storage can be unavailable in incognito.
   }
+  if (activeAction === 'newChat') return;
   renderAll();
 }
 
