@@ -13,6 +13,7 @@ import {
   getSettingsPage,
   deleteContactChat,
   deleteLatestContactMessage,
+  updateContactChat,
   searchSettings,
   toggleChannelFollow,
   sendMessage,
@@ -252,6 +253,29 @@ test('deletes a username contact from the chat list', () => {
 
   assert.deepEqual(updated.contacts.map((contact) => contact.name), ['Friend']);
   assert.equal(updated.activeContactId, 'friend');
+});
+
+test('edits a username contact name and phone number', () => {
+  const contact = buildSavedContact({ id: 'aadhish', name: 'aadhish', phone: '+971 50 111 2222' });
+  const state = createInitialState({ contacts: [contact], activeContactId: contact.id });
+
+  const updated = updateContactChat(state, contact.id, {
+    name: 'Aadhish Home',
+    phone: '+91 98765 43210'
+  });
+
+  assert.equal(updated.contacts[0].name, 'Aadhish Home');
+  assert.equal(updated.contacts[0].phone, '+91 98765 43210');
+  assert.equal(updated.activeContactId, contact.id);
+});
+
+test('chat contact actions open from right click or name press instead of permanent row buttons', () => {
+  const contents = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
+
+  assert.match(contents, /chatList\.addEventListener\('contextmenu'/);
+  assert.match(contents, /data-contact-menu/);
+  assert.match(contents, /id="editContactForm"/);
+  assert.doesNotMatch(contents, /class="chat-row-action"/);
 });
 
 test('new chat form keeps typed draft values across re-renders and refreshes', () => {

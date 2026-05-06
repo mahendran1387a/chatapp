@@ -278,8 +278,8 @@ button {
 }
 
 .chat-item {
-  grid-template-columns: minmax(0, 1fr) auto;
-  padding: 0 12px 0 22px;
+  grid-template-columns: minmax(0, 1fr);
+  padding: 0;
 }
 
 .chat-main {
@@ -289,7 +289,7 @@ button {
   align-items: center;
   width: 100%;
   min-width: 0;
-  padding: 11px 0;
+  padding: 11px 22px;
   border: 0;
   color: inherit;
   background: transparent;
@@ -298,40 +298,14 @@ button {
   cursor: pointer;
 }
 
-.chat-row-actions {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-
-.chat-row-action {
-  min-width: 46px;
-  padding: 7px 10px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  color: var(--green-dark);
-  background: #fff;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.chat-row-action:hover {
-  background: #e7fce3;
-}
-
-.chat-row-action.danger {
-  color: #c0183a;
-}
-
-.chat-row-action.danger:hover {
-  background: #ffe9ee;
-}
-
 .chat-copy,
 .status-copy,
 .channel-copy {
   min-width: 0;
+}
+
+.chat-copy {
+  cursor: context-menu;
 }
 
 .chat-title-row {
@@ -1127,6 +1101,46 @@ button {
   transform: translateX(-50%);
 }
 
+.contact-context-menu {
+  position: fixed;
+  z-index: 40;
+  display: grid;
+  min-width: 220px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 14px 34px rgba(11, 20, 26, 0.2);
+}
+
+.contact-context-menu strong,
+.contact-context-menu small {
+  padding: 4px 10px;
+}
+
+.contact-context-menu small {
+  color: var(--muted);
+}
+
+.contact-context-menu button {
+  padding: 10px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--ink);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.contact-context-menu button:hover {
+  background: #f0f2f5;
+}
+
+.contact-context-menu .danger-row {
+  color: #c0183a;
+}
+
 .action-dialog-backdrop {
   position: fixed;
   inset: 0;
@@ -1888,17 +1902,7 @@ button {
   .chat-main {
     grid-template-columns: 48px minmax(0, 1fr) auto;
     gap: 10px;
-    padding: 0;
-  }
-
-  .chat-row-actions {
-    justify-self: start;
-    padding-left: 58px;
-  }
-
-  .chat-row-action {
-    min-width: 42px;
-    padding: 6px 9px;
+    padding: 10px 14px;
   }
 
   .avatar,

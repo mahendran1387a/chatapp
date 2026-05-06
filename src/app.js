@@ -13,7 +13,8 @@ import {
   selectContact,
   sendMessage,
   switchSection,
-  toggleChannelFollow
+  toggleChannelFollow,
+  updateContactChat
 } from './chat-store.js';
 
 const savedChatStorageKey = 'chatapp.savedChats.v1';
@@ -141,6 +142,7 @@ rememberChatSnapshot();
 let currentFilter = 'all';
 let activeAction = null;
 let activeSettingsPage = null;
+let activeContactMenuId = null;
 let settingsSearchQuery = '';
 let isLoggedOut = false;
 let mobileConversationOpen = false;
@@ -664,7 +666,7 @@ function renderChats() {
         <div class="chat-item ${contact.id === state.activeContactId ? 'active' : ''}" data-contact-id="${contact.id}">
           <button class="chat-main" type="button" data-contact-open="${contact.id}">
             ${renderAvatar(contact.avatar, contact.color)}
-            <span class="chat-copy">
+            <span class="chat-copy" data-contact-menu="${contact.id}">
               <span class="chat-title-row">
                 <span class="chat-name">${contact.name}</span>
                 <span class="chat-time">${contact.time}</span>
@@ -673,10 +675,6 @@ function renderChats() {
             </span>
             ${contact.unread ? `<span class="unread">${contact.unread}</span>` : '<span></span>'}
           </button>
-          <span class="chat-row-actions" aria-label="Chat actions">
-            <button class="chat-row-action" type="button" title="Delete message" aria-label="Delete latest message" data-chat-action="delete-message" data-chat-id="${contact.id}">Msg</button>
-            <button class="chat-row-action danger" type="button" title="Delete username" aria-label="Delete username" data-chat-action="delete-contact" data-chat-id="${contact.id}">Name</button>
-          </span>
         </div>
       `
     )
@@ -934,6 +932,79 @@ function showToast(text) {
   window.setTimeout(() => toast.remove(), 1800);
 }
 
+function closeContactMenu() {
+  activeContactMenuId = null;
+  document.querySelector('.contact-context-menu')?.remove();
+}
+
+function getContactById(contactId) {
+  return state.contacts.find((contact) => contact.id === contactId);
+}
+
+function showContactMenu(contactId, anchor = {}) {
+  const contact = getContactById(contactId);
+  if (!contact) return;
+  closeContactMenu();
+  activeContactMenuId = contactId;
+
+  const menu = document.createElement('div');
+  menu.className = 'contact-context-menu';
+  menu.setAttribute('role', 'menu');
+  menu.innerHTML = `
+    <strong>${contact.name}</strong>
+    <small>${contact.phone || 'No phone number saved'}</small>
+    <button type="button" data-contact-menu-action="edit" data-contact-id="${contact.id}">Edit name and phone</button>
+    <button type="button" data-contact-menu-action="delete-message" data-contact-id="${contact.id}">Delete latest message</button>
+    <button type="button" class="danger-row" data-contact-menu-action="delete-contact" data-contact-id="${contact.id}">Delete username</button>
+  `;
+  document.body.append(menu);
+
+  const rect = menu.getBoundingClientRect();
+  const left = Math.min(anchor.x ?? window.innerWidth / 2, window.innerWidth - rect.width - 12);
+  const top = Math.min(anchor.y ?? window.innerHeight / 2, window.innerHeight - rect.height - 12);
+  menu.style.left = `${Math.max(12, left)}px`;
+  menu.style.top = `${Math.max(12, top)}px`;
+}
+
+function showEditContactDialog(contactId) {
+  const contact = getContactById(contactId);
+  if (!contact) return;
+  closeContactMenu();
+  const existing = document.querySelector('.action-dialog-backdrop');
+  if (existing) existing.remove();
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'action-dialog-backdrop';
+  backdrop.innerHTML = `
+    <section class="action-dialog menu-dialog" role="dialog" aria-label="Edit contact">
+      <button class="dialog-close" aria-label="Close">x</button>
+      <form class="business-profile-form dialog-form" id="editContactForm" data-contact-id="${contact.id}">
+        ${renderAvatar(contact.avatar, contact.color, 'small')}
+        <h2>Edit contact</h2>
+        <p>Change this username and phone number.</p>
+        <div class="business-fields">
+          <label class="profile-field">
+            <span>Friend name</span>
+            <input name="name" type="text" autocomplete="off" value="${escapeAttribute(contact.name)}" required />
+          </label>
+          <label class="profile-field">
+            <span>Phone number</span>
+            <input name="phone" type="tel" autocomplete="off" value="${escapeAttribute(contact.phone || '')}" required />
+          </label>
+        </div>
+        <button class="detail-action" type="submit">Save contact</button>
+      </form>
+    </section>
+  `;
+  document.body.append(backdrop);
+  backdrop.addEventListener('click', (event) => {
+    if (event.target === backdrop || event.target.closest('.dialog-close')) {
+      backdrop.remove();
+    }
+  });
+  backdrop.querySelector('input[name="name"]')?.focus();
+}
+
 function showActionDialog(view) {
   const existing = document.querySelector('.action-dialog-backdrop');
   if (existing) existing.remove();
@@ -1094,30 +1165,36 @@ function openAction(actionId) {
 }
 
 chatList.addEventListener('click', (event) => {
-  const rowAction = event.target.closest('[data-chat-action]');
-  if (rowAction) {
-    const contactId = rowAction.dataset.chatId;
-    if (rowAction.dataset.chatAction === 'delete-message') {
-      state = deleteLatestContactMessage(state, contactId);
-      saveChatState();
-      renderAll();
-      showToast('Message deleted');
-      return;
-    }
-    state = deleteContactChat(state, contactId);
-    saveChatState();
-    renderAll();
-    showToast('Username deleted');
+  const menuTrigger = event.target.closest('[data-contact-menu]');
+  if (menuTrigger) {
+    event.preventDefault();
+    event.stopPropagation();
+    const bounds = menuTrigger.getBoundingClientRect();
+    showContactMenu(menuTrigger.dataset.contactMenu, {
+      x: bounds.left + 20,
+      y: bounds.bottom + 6
+    });
     return;
   }
 
   const item = event.target.closest('[data-contact-open], [data-contact-id]');
   if (!item) return;
+  closeContactMenu();
   activeAction = null;
   mobileConversationOpen = true;
   state = selectContact(state, item.dataset.contactOpen ?? item.dataset.contactId);
   saveChatState();
   renderAll();
+});
+
+chatList.addEventListener('contextmenu', (event) => {
+  const item = event.target.closest('[data-contact-id]');
+  if (!item) return;
+  event.preventDefault();
+  showContactMenu(item.dataset.contactId, {
+    x: event.clientX,
+    y: event.clientY
+  });
 });
 
 searchInput.addEventListener('input', renderChats);
@@ -1162,6 +1239,34 @@ document.querySelectorAll('[data-jump-section]').forEach((button) => {
 
 document.addEventListener('click', (event) => {
   if (event.target.closest('[data-settings-dismiss]')) return;
+
+  const contactMenuAction = event.target.closest('[data-contact-menu-action]');
+  if (contactMenuAction) {
+    const contactId = contactMenuAction.dataset.contactId;
+    const action = contactMenuAction.dataset.contactMenuAction;
+    if (action === 'edit') {
+      showEditContactDialog(contactId);
+      return;
+    }
+    if (action === 'delete-message') {
+      state = deleteLatestContactMessage(state, contactId);
+      closeContactMenu();
+      saveChatState();
+      renderAll();
+      showToast('Message deleted');
+      return;
+    }
+    state = deleteContactChat(state, contactId);
+    closeContactMenu();
+    saveChatState();
+    renderAll();
+    showToast('Username deleted');
+    return;
+  }
+
+  if (activeContactMenuId && !event.target.closest('.contact-context-menu')) {
+    closeContactMenu();
+  }
 
   const discoverChannel = event.target.closest('[data-discover-channel]');
   if (discoverChannel) {
@@ -1316,6 +1421,10 @@ document.addEventListener('input', (event) => {
   saveNewChatDraft();
 });
 
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') closeContactMenu();
+});
+
 document.addEventListener('submit', (event) => {
   const createStatusForm = event.target.closest('#createStatusForm');
   if (createStatusForm) {
@@ -1360,6 +1469,24 @@ document.addEventListener('submit', (event) => {
     newChatForm.closest('.action-dialog-backdrop')?.remove();
     renderAll();
     showToast('Chat saved');
+    return;
+  }
+
+  const editContactForm = event.target.closest('#editContactForm');
+  if (editContactForm) {
+    event.preventDefault();
+    const formData = new FormData(editContactForm);
+    const name = String(formData.get('name') ?? '');
+    const phone = String(formData.get('phone') ?? '');
+    if (!name.trim() || !phone.trim()) {
+      showToast('Enter name and phone number');
+      return;
+    }
+    state = updateContactChat(state, editContactForm.dataset.contactId, { name, phone });
+    saveChatState();
+    editContactForm.closest('.action-dialog-backdrop')?.remove();
+    renderAll();
+    showToast('Contact saved');
     return;
   }
 

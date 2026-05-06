@@ -694,6 +694,32 @@ export function deleteContactChat(state, contactId) {
   };
 }
 
+export function updateContactChat(state, contactId, { name, phone }) {
+  const cleanName = name.trim();
+  const cleanPhone = phone.trim();
+  if (!cleanName || !cleanPhone) return state;
+
+  return {
+    ...state,
+    contacts: state.contacts.map((contact) =>
+      contact.id === contactId
+        ? {
+            ...contact,
+            name: cleanName,
+            phone: cleanPhone,
+            avatar: cleanName
+              .split(/\s+/)
+              .filter(Boolean)
+              .slice(0, 2)
+              .map((part) => part[0])
+              .join('')
+              .toUpperCase()
+          }
+        : contact
+    )
+  };
+}
+
 export function switchSection(state, section) {
   return {
     ...state,
