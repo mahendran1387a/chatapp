@@ -10,13 +10,14 @@ This app is ready to deploy as a Render Web Service.
 4. Render will read `render.yaml`.
 5. Deploy the `chatapp-web` service.
 
-Render will give you a public URL like:
+The public chat app URL is:
 
 ```text
 https://chatapp-web.onrender.com
 ```
 
 Send that URL to friends so they can open the chat app from phones and computers.
+The same link is also saved in `PUBLIC_CHAT_LINK.txt` and `Open Chat App Online.url`.
 
 ## Notes
 

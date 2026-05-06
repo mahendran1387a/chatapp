@@ -1,0 +1,12 @@
+Public chat app link:
+
+https://chatapp-web.onrender.com
+
+Use this link for phones, iPhone, computer, and friends outside your home network.
+
+Do not share http://127.0.0.1:4173 with friends. That address only works on the computer where the app is running locally.
+
+Important:
+- The Render link stays the same as long as the Render service named chatapp-web is kept.
+- On Render free plan, the app can sleep when nobody uses it. The link is still the same, but it can take a little time to wake up.
+- For a link you fully own forever, connect a custom domain to Render, such as mychatapp.com.
