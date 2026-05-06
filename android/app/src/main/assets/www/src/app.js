@@ -1,6 +1,8 @@
 import {
   createContactChat,
   createInitialState,
+  deleteContactChat,
+  deleteLatestContactMessage,
   filterContacts,
   getActionView,
   getActiveContact,
@@ -659,17 +661,23 @@ function renderChats() {
   chatList.innerHTML = contacts
     .map(
       (contact) => `
-        <button class="chat-item ${contact.id === state.activeContactId ? 'active' : ''}" data-contact-id="${contact.id}">
-          ${renderAvatar(contact.avatar, contact.color)}
-          <span class="chat-copy">
-            <span class="chat-title-row">
-              <span class="chat-name">${contact.name}</span>
-              <span class="chat-time">${contact.time}</span>
+        <div class="chat-item ${contact.id === state.activeContactId ? 'active' : ''}" data-contact-id="${contact.id}">
+          <button class="chat-main" type="button" data-contact-open="${contact.id}">
+            ${renderAvatar(contact.avatar, contact.color)}
+            <span class="chat-copy">
+              <span class="chat-title-row">
+                <span class="chat-name">${contact.name}</span>
+                <span class="chat-time">${contact.time}</span>
+              </span>
+              <span class="chat-preview">${contact.deleted ? 'This message was deleted' : contact.preview}</span>
             </span>
-            <span class="chat-preview">${contact.deleted ? 'This message was deleted' : contact.preview}</span>
+            ${contact.unread ? `<span class="unread">${contact.unread}</span>` : '<span></span>'}
+          </button>
+          <span class="chat-row-actions" aria-label="Chat actions">
+            <button class="chat-row-action" type="button" title="Delete message" aria-label="Delete latest message" data-chat-action="delete-message" data-chat-id="${contact.id}">Msg</button>
+            <button class="chat-row-action danger" type="button" title="Delete username" aria-label="Delete username" data-chat-action="delete-contact" data-chat-id="${contact.id}">Name</button>
           </span>
-          ${contact.unread ? `<span class="unread">${contact.unread}</span>` : '<span></span>'}
-        </button>
+        </div>
       `
     )
     .join('');
@@ -1086,11 +1094,28 @@ function openAction(actionId) {
 }
 
 chatList.addEventListener('click', (event) => {
-  const item = event.target.closest('[data-contact-id]');
+  const rowAction = event.target.closest('[data-chat-action]');
+  if (rowAction) {
+    const contactId = rowAction.dataset.chatId;
+    if (rowAction.dataset.chatAction === 'delete-message') {
+      state = deleteLatestContactMessage(state, contactId);
+      saveChatState();
+      renderAll();
+      showToast('Message deleted');
+      return;
+    }
+    state = deleteContactChat(state, contactId);
+    saveChatState();
+    renderAll();
+    showToast('Username deleted');
+    return;
+  }
+
+  const item = event.target.closest('[data-contact-open], [data-contact-id]');
   if (!item) return;
   activeAction = null;
   mobileConversationOpen = true;
-  state = selectContact(state, item.dataset.contactId);
+  state = selectContact(state, item.dataset.contactOpen ?? item.dataset.contactId);
   saveChatState();
   renderAll();
 });

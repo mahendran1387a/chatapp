@@ -655,6 +655,45 @@ export function createContactChat(state, { name, phone }) {
   };
 }
 
+export function deleteLatestContactMessage(state, contactId) {
+  return {
+    ...state,
+    contacts: state.contacts.map((contact) => {
+      if (contact.id !== contactId) return contact;
+      const deletedMessage = {
+        ...(contact.messages.at(-1) ?? {
+          id: `${contact.id}-${Date.now()}-deleted`,
+          direction: 'in',
+          time: 'Now'
+        }),
+        text: 'This message was deleted',
+        deleted: true
+      };
+      return {
+        ...contact,
+        deleted: true,
+        preview: 'This message was deleted',
+        messages: contact.messages.length
+          ? [...contact.messages.slice(0, -1), deletedMessage]
+          : [deletedMessage]
+      };
+    })
+  };
+}
+
+export function deleteContactChat(state, contactId) {
+  const contacts = state.contacts.filter((contact) => contact.id !== contactId);
+  const activeContactId = state.activeContactId === contactId
+    ? contacts[0]?.id
+    : state.activeContactId;
+
+  return {
+    ...state,
+    activeContactId,
+    contacts
+  };
+}
+
 export function switchSection(state, section) {
   return {
     ...state,

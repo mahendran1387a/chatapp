@@ -11,6 +11,8 @@ import {
   getSettingOptionView,
   getSettingDangerView,
   getSettingsPage,
+  deleteContactChat,
+  deleteLatestContactMessage,
   searchSettings,
   toggleChannelFollow,
   sendMessage,
@@ -227,6 +229,29 @@ test('creates a new chat from a friend name and phone number', () => {
   assert.equal(contact.phone, '+971 50 123 4567');
   assert.equal(contact.preview, 'New chat created');
   assert.equal(contact.messages[0].text, 'New chat created with +971 50 123 4567');
+});
+
+test('marks the latest chat message as deleted from the chat list', () => {
+  const savedContact = buildSavedContact({ id: 'aadhish', name: 'aadhish', preview: 'nvjkfmnb' });
+  const state = createInitialState({ contacts: [savedContact], activeContactId: savedContact.id });
+
+  const updated = deleteLatestContactMessage(state, savedContact.id);
+  const contact = updated.contacts[0];
+
+  assert.equal(contact.deleted, true);
+  assert.equal(contact.preview, 'This message was deleted');
+  assert.equal(contact.messages.at(-1).text, 'This message was deleted');
+});
+
+test('deletes a username contact from the chat list', () => {
+  const first = buildSavedContact({ id: 'aadhish', name: 'aadhish' });
+  const second = buildSavedContact({ id: 'friend', name: 'Friend' });
+  const state = createInitialState({ contacts: [first, second], activeContactId: first.id });
+
+  const updated = deleteContactChat(state, first.id);
+
+  assert.deepEqual(updated.contacts.map((contact) => contact.name), ['Friend']);
+  assert.equal(updated.activeContactId, 'friend');
 });
 
 test('new chat form keeps typed draft values across re-renders and refreshes', () => {
