@@ -267,7 +267,7 @@ const actionViews = {
     title: 'Profile',
     body: 'Update your name, profile photo, and about text.',
     primaryAction: 'Edit profile',
-    points: ['Sangavi Mahendran', 'About', 'Profile photo']
+    points: ['Aadhish Mahendran', 'About', 'Profile photo']
   },
   account: {
     title: 'Account',
@@ -317,7 +317,7 @@ const settingsPages = {
   profile: {
     title: 'Profile',
     items: [
-      { type: 'input', label: 'Name', value: 'Sangavi Mahendran', detail: 'This is not your username or PIN.' },
+      { type: 'input', label: 'Name', value: 'Aadhish Mahendran', detail: 'This is not your username or PIN.' },
       { type: 'input', label: 'Email', value: '', detail: 'Use a demo email address for this local app.' },
       { type: 'password', label: 'Password', value: '', detail: 'Stored only in this page while the demo is open.' },
       { type: 'input', label: 'About', value: 'Available', detail: 'People can see this under your profile.' },

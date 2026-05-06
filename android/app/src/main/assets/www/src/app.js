@@ -112,7 +112,7 @@ let isLoggedOut = false;
 let mobileConversationOpen = false;
 const settingSwitches = new Map();
 const profileValues = {
-  Name: 'Sangavi Mahendran',
+  Name: 'Aadhish Mahendran',
   Email: '',
   Password: '',
   About: 'Available'
@@ -477,7 +477,7 @@ function renderProfileSettingsPage(page) {
         <h2>${page.title}</h2>
       </header>
       <form class="profile-form" id="profileForm">
-        <div class="profile-edit-photo">SM</div>
+        <div class="profile-edit-photo">AM</div>
         ${page.items
           .map((item) => {
             if (item.type === 'action') {
@@ -568,8 +568,7 @@ function renderSettingsHome() {
         <button data-settings-dismiss aria-label="Dismiss settings notice">x</button>
       </div>
       <button class="profile-row" data-settings-page="profile">
-        <span class="profile-photo">SM</span>
-        <strong>Sangavi Mahendran</strong>
+        <span class="profile-photo">AM</span>
       </button>
       <div class="settings-list">
         <button class="settings-row" data-jump-section="business">

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
@@ -188,6 +189,26 @@ test('profile settings include editable account fields', () => {
 
   assert.ok(page.items.some((item) => item.type === 'input' && item.label === 'Email'));
   assert.ok(page.items.some((item) => item.type === 'password' && item.label === 'Password'));
+});
+
+test('uses AM profile identity in settings and bundled Android app', () => {
+  const page = getSettingsPage('profile');
+  const profileView = getActionView('profile');
+  const nameField = page.items.find((item) => item.label === 'Name');
+
+  assert.equal(nameField.value, 'Aadhish Mahendran');
+  assert.ok(profileView.points.includes('Aadhish Mahendran'));
+
+  for (const relativePath of [
+    '../src/app.js',
+    '../src/chat-store.js',
+    '../android/app/src/main/assets/www/src/app.js',
+    '../android/app/src/main/assets/www/src/chat-store.js'
+  ]) {
+    const contents = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
+    assert.doesNotMatch(contents, /Sangavi Mahendran/);
+    assert.doesNotMatch(contents, /profile-(?:edit-)?photo">SM/);
+  }
 });
 
 test('business profile action includes editable username and password fields', () => {
