@@ -229,6 +229,19 @@ test('creates a new chat from a friend name and phone number', () => {
   assert.equal(contact.messages[0].text, 'New chat created with +971 50 123 4567');
 });
 
+test('new chat form keeps typed draft values across re-renders', () => {
+  for (const relativePath of [
+    '../src/app.js',
+    '../android/app/src/main/assets/www/src/app.js'
+  ]) {
+    const contents = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
+    assert.match(contents, /const newChatDraft = \{/);
+    assert.match(contents, /newChatDraft\.name = newChatInput\.value/);
+    assert.match(contents, /value="\$\{escapeAttribute\(newChatDraft\.name\)\}"/);
+    assert.match(contents, /value="\$\{escapeAttribute\(newChatDraft\.phone\)\}"/);
+  }
+});
+
 test('chat menu action exposes WhatsApp-style menu items', () => {
   const view = getActionView('chatMenu');
 

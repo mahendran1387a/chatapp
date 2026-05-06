@@ -131,6 +131,10 @@ const statusValues = {
   'Status text': '',
   'Background color': 'Green'
 };
+const newChatDraft = {
+  name: '',
+  phone: ''
+};
 
 const chatList = document.querySelector('#chatList');
 const searchInput = document.querySelector('#searchInput');
@@ -393,11 +397,11 @@ function renderNewChatForm(view) {
       <div class="business-fields">
         <label class="profile-field">
           <span>Friend name</span>
-          <input name="name" type="text" autocomplete="off" placeholder="Aisha Friend" required />
+          <input name="name" type="text" autocomplete="off" placeholder="Aisha Friend" value="${escapeAttribute(newChatDraft.name)}" required />
         </label>
         <label class="profile-field">
           <span>Phone number</span>
-          <input name="phone" type="tel" autocomplete="off" placeholder="+971 50 123 4567" required />
+          <input name="phone" type="tel" autocomplete="off" placeholder="+971 50 123 4567" value="${escapeAttribute(newChatDraft.phone)}" required />
         </label>
       </div>
       <button class="detail-action" type="submit">Create chat</button>
@@ -972,11 +976,11 @@ function showActionDialog(view) {
           <div class="business-fields">
             <label class="profile-field">
               <span>Friend name</span>
-              <input name="name" type="text" autocomplete="off" placeholder="Aisha Friend" required />
+              <input name="name" type="text" autocomplete="off" placeholder="Aisha Friend" value="${escapeAttribute(newChatDraft.name)}" required />
             </label>
             <label class="profile-field">
               <span>Phone number</span>
-              <input name="phone" type="tel" autocomplete="off" placeholder="+971 50 123 4567" required />
+              <input name="phone" type="tel" autocomplete="off" placeholder="+971 50 123 4567" value="${escapeAttribute(newChatDraft.phone)}" required />
             </label>
           </div>
           <button class="detail-action" type="submit">Save chat</button>
@@ -1236,6 +1240,17 @@ document.addEventListener('input', (event) => {
   refreshedInput.setSelectionRange(settingsSearchQuery.length, settingsSearchQuery.length);
 });
 
+document.addEventListener('input', (event) => {
+  const newChatInput = event.target.closest('#newChatForm input[name="name"], #newChatForm input[name="phone"]');
+  if (!newChatInput) return;
+
+  if (newChatInput.name === 'name') {
+    newChatDraft.name = newChatInput.value;
+  } else {
+    newChatDraft.phone = newChatInput.value;
+  }
+});
+
 document.addEventListener('submit', (event) => {
   const createStatusForm = event.target.closest('#createStatusForm');
   if (createStatusForm) {
@@ -1276,6 +1291,8 @@ document.addEventListener('submit', (event) => {
     mobileConversationOpen = true;
     state = createContactChat(state, { name, phone });
     saveChatState();
+    newChatDraft.name = '';
+    newChatDraft.phone = '';
     newChatForm.closest('.action-dialog-backdrop')?.remove();
     renderAll();
     showToast('Chat saved');
