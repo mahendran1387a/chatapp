@@ -521,6 +521,28 @@ function isReferenceContact(contact) {
   return referenceContactIds.has(contact.id) || referenceContactNames.has(contact.name);
 }
 
+function makeGmailFromName(name) {
+  const localPart = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '.')
+    .replace(/^\.+|\.+$/g, '');
+  return `${localPart || 'friend'}@gmail.com`;
+}
+
+function withContactProfile(contact) {
+  const email = typeof contact.email === 'string' && contact.email.trim()
+    ? contact.email.trim()
+    : makeGmailFromName(contact.name);
+  return {
+    ...contact,
+    email,
+    preview: contact.deleted ? 'This message was deleted' : email,
+    color: contact.color ?? '#cbd6dc',
+    textColor: contact.textColor ?? '#42545d'
+  };
+}
+
 export function createInitialState(savedState = {}) {
   const savedContacts = Array.isArray(savedState.contacts)
     ? savedState.contacts.filter((contact) => isValidContact(contact) && !isReferenceContact(contact))
@@ -530,7 +552,8 @@ export function createInitialState(savedState = {}) {
     : [];
   const deletedIdSet = new Set(deletedContactIds);
   const contacts = (savedContacts.length ? structuredClone(savedContacts) : structuredClone(sampleContacts))
-    .filter((contact) => !deletedIdSet.has(contact.id));
+    .filter((contact) => !deletedIdSet.has(contact.id))
+    .map(withContactProfile);
   const savedActiveContactId =
     typeof savedState.activeContactId === 'string' &&
     contacts.some((contact) => contact.id === savedState.activeContactId)
@@ -621,7 +644,7 @@ export function selectContact(state, contactId) {
 export function createContactChat(state, { name, phone, email = '' }) {
   const cleanName = name.trim();
   const cleanPhone = phone.trim();
-  const cleanEmail = email.trim();
+  const cleanEmail = email.trim() || makeGmailFromName(cleanName);
   if (!cleanName || !cleanPhone) return state;
 
   const idBase = cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'friend';
@@ -709,7 +732,7 @@ export function deleteContactChat(state, contactId) {
 export function updateContactChat(state, contactId, { name, phone, email = '' }) {
   const cleanName = name.trim();
   const cleanPhone = phone.trim();
-  const cleanEmail = email.trim();
+  const cleanEmail = email.trim() || makeGmailFromName(cleanName);
   if (!cleanName || !cleanPhone) return state;
 
   return {

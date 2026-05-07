@@ -199,6 +199,11 @@ function renderAvatar(label, color, extraClass = '', textColor = '#ffffff') {
   return `<span class="avatar ${extraClass}" style="background:${color}; color:${textColor}">${label}</span>`;
 }
 
+function getContactEmail(contact) {
+  if (contact.email) return contact.email;
+  return `${contact.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '.').replace(/^\.+|\.+$/g, '') || 'friend'}@gmail.com`;
+}
+
 function renderContactAvatar(contact, extraClass = '') {
   const avatar = renderAvatar(
     contact.avatar,
@@ -206,7 +211,7 @@ function renderContactAvatar(contact, extraClass = '') {
     extraClass,
     contact.textColor ?? '#ffffff'
   );
-  if (!contact.email) return avatar;
+  if (!getContactEmail(contact)) return avatar;
   return `<span class="contact-avatar-wrap">${avatar}<span class="gmail-badge">G</span></span>`;
 }
 
@@ -466,7 +471,7 @@ function renderNewChatForm(view) {
         </label>
         <label class="profile-field">
           <span>Gmail</span>
-          <input name="email" type="email" autocomplete="off" placeholder="friend@gmail.com" value="${escapeAttribute(newChatDraft.email)}" required />
+          <input name="email" type="email" autocomplete="off" placeholder="friend@gmail.com" value="${escapeAttribute(newChatDraft.email)}" />
         </label>
       </div>
       <button class="detail-action" type="submit">Create chat</button>
@@ -1002,7 +1007,7 @@ function showContactMenu(contactId, anchor = {}) {
   menu.setAttribute('role', 'menu');
   menu.innerHTML = `
     <strong>${contact.name}</strong>
-    <small>${contact.email || contact.phone || 'No contact detail saved'}</small>
+    <small>${getContactEmail(contact) || contact.phone || 'No contact detail saved'}</small>
     <button type="button" data-contact-menu-action="edit" data-contact-id="${contact.id}">Edit name and phone</button>
     <button type="button" class="danger-row" data-contact-menu-action="delete-contact" data-contact-id="${contact.id}">Delete username</button>
   `;
@@ -1065,7 +1070,7 @@ function showEditContactDialog(contactId) {
           </label>
           <label class="profile-field">
             <span>Gmail</span>
-            <input name="email" type="email" autocomplete="off" value="${escapeAttribute(contact.email || '')}" placeholder="friend@gmail.com" required />
+          <input name="email" type="email" autocomplete="off" value="${escapeAttribute(getContactEmail(contact))}" placeholder="friend@gmail.com" />
           </label>
         </div>
         <button class="detail-action" type="submit">Save contact</button>
@@ -1213,7 +1218,7 @@ function showActionDialog(view) {
             </label>
             <label class="profile-field">
               <span>Gmail</span>
-              <input name="email" type="email" autocomplete="off" placeholder="friend@gmail.com" value="${escapeAttribute(newChatDraft.email)}" required />
+              <input name="email" type="email" autocomplete="off" placeholder="friend@gmail.com" value="${escapeAttribute(newChatDraft.email)}" />
             </label>
           </div>
           <button class="detail-action" type="submit">Save chat</button>
@@ -1589,11 +1594,11 @@ document.addEventListener('submit', (event) => {
     const name = String(formData.get('name') ?? '');
     const phone = String(formData.get('phone') ?? '');
     const email = String(formData.get('email') ?? '');
-    if (!name.trim() || !phone.trim() || !email.trim()) {
-      showToast('Enter name, phone number, and Gmail');
+    if (!name.trim() || !phone.trim()) {
+      showToast('Enter name and phone number');
       return;
     }
-    if (!email.includes('@')) {
+    if (email.trim() && !email.includes('@')) {
       showToast('Enter a valid Gmail address');
       return;
     }
@@ -1616,11 +1621,11 @@ document.addEventListener('submit', (event) => {
     const name = String(formData.get('name') ?? '');
     const phone = String(formData.get('phone') ?? '');
     const email = String(formData.get('email') ?? '');
-    if (!name.trim() || !phone.trim() || !email.trim()) {
-      showToast('Enter name, phone number, and Gmail');
+    if (!name.trim() || !phone.trim()) {
+      showToast('Enter name and phone number');
       return;
     }
-    if (!email.includes('@')) {
+    if (email.trim() && !email.includes('@')) {
       showToast('Enter a valid Gmail address');
       return;
     }

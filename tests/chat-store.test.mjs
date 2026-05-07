@@ -81,6 +81,15 @@ test('restores saved chats after reload', () => {
   assert.equal(getActiveContact(state).phone, '+971 50 123 4567');
 });
 
+test('adds a Gmail display line to older saved contacts without one', () => {
+  const savedContact = buildSavedContact({ name: 'Paper Friend', email: undefined, preview: 'hi' });
+
+  const state = createInitialState({ contacts: [savedContact], activeContactId: savedContact.id });
+
+  assert.equal(state.contacts[0].email, 'paper.friend@gmail.com');
+  assert.equal(state.contacts[0].preview, 'paper.friend@gmail.com');
+});
+
 test('filters contacts by search term and unread mode', () => {
   const state = createInitialState({
     contacts: [
@@ -239,6 +248,15 @@ test('creates a new chat from a friend name, phone number, and Gmail', () => {
   assert.equal(contact.messages[0].text, 'New chat created with +971 50 123 4567');
 });
 
+test('creates a Gmail contact display from only the friend name when Gmail is blank', () => {
+  const state = createInitialState();
+  const updated = createContactChat(state, { name: 'Paper Friend', phone: '+971 50 765 4321' });
+  const contact = updated.contacts.find((item) => item.name === 'Paper Friend');
+
+  assert.equal(contact.email, 'paper.friend@gmail.com');
+  assert.equal(contact.preview, 'paper.friend@gmail.com');
+});
+
 test('marks the latest chat message as deleted from the chat list', () => {
   const savedContact = buildSavedContact({ id: 'aadhish', name: 'aadhish', preview: 'nvjkfmnb' });
   const state = createInitialState({ contacts: [savedContact], activeContactId: savedContact.id });
@@ -331,6 +349,7 @@ test('new chat form keeps typed draft values across re-renders and refreshes', (
     assert.match(contents, /const newChatDraft = loadNewChatDraft\(\)/);
     assert.match(contents, /newChatDraft\.name = newChatInput\.value/);
     assert.match(contents, /newChatDraft\.email = newChatInput\.value/);
+    assert.match(contents, /function getContactEmail\(contact\)/);
     assert.match(contents, /if \(activeAction === 'newChat'\) return;/);
     assert.match(contents, /value="\$\{escapeAttribute\(newChatDraft\.name\)\}"/);
     assert.match(contents, /value="\$\{escapeAttribute\(newChatDraft\.phone\)\}"/);
