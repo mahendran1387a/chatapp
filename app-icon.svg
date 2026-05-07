@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="ChatApp icon">
+  <defs>
+    <linearGradient id="bg" x1="18" y1="8" x2="110" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#132635"/>
+      <stop offset="1" stop-color="#07131c"/>
+    </linearGradient>
+    <linearGradient id="bubble" x1="32" y1="28" x2="98" y2="101" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#19e6d2"/>
+      <stop offset="1" stop-color="#00a884"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="112" height="112" rx="28" fill="url(#bg)"/>
+  <rect x="9" y="9" width="110" height="110" rx="27" fill="none" stroke="#243b4d" stroke-width="2"/>
+  <path fill="url(#bubble)" d="M35 33h58c9.4 0 17 7.6 17 17v31c0 9.4-7.6 17-17 17H58l-26 16 7-22a16.9 16.9 0 0 1-21-16V50c0-9.4 7.6-17 17-17Z"/>
+  <circle cx="52" cy="66" r="6" fill="#06212a"/>
+  <circle cx="64" cy="66" r="6" fill="#06212a"/>
+  <circle cx="76" cy="66" r="6" fill="#06212a"/>
+</svg>
