@@ -84,10 +84,11 @@ function loadNewChatDraft() {
     const parsed = saved ? JSON.parse(saved) : {};
     return {
       name: typeof parsed.name === 'string' ? parsed.name : '',
-      phone: typeof parsed.phone === 'string' ? parsed.phone : ''
+      phone: typeof parsed.phone === 'string' ? parsed.phone : '',
+      email: typeof parsed.email === 'string' ? parsed.email : ''
     };
   } catch {
-    return { name: '', phone: '' };
+    return { name: '', phone: '', email: '' };
   }
 }
 
@@ -102,6 +103,7 @@ function saveNewChatDraft() {
 function clearNewChatDraft() {
   newChatDraft.name = '';
   newChatDraft.phone = '';
+  newChatDraft.email = '';
   try {
     window.localStorage.removeItem(newChatDraftStorageKey);
   } catch {
@@ -195,6 +197,17 @@ function initials(name) {
 
 function renderAvatar(label, color, extraClass = '', textColor = '#ffffff') {
   return `<span class="avatar ${extraClass}" style="background:${color}; color:${textColor}">${label}</span>`;
+}
+
+function renderContactAvatar(contact, extraClass = '') {
+  const avatar = renderAvatar(
+    contact.avatar,
+    contact.color,
+    extraClass,
+    contact.textColor ?? '#ffffff'
+  );
+  if (!contact.email) return avatar;
+  return `<span class="contact-avatar-wrap">${avatar}<span class="gmail-badge">G</span></span>`;
 }
 
 function escapeAttribute(value) {
@@ -451,6 +464,10 @@ function renderNewChatForm(view) {
           <span>Phone number</span>
           <input name="phone" type="tel" autocomplete="off" placeholder="+971 50 123 4567" value="${escapeAttribute(newChatDraft.phone)}" required />
         </label>
+        <label class="profile-field">
+          <span>Gmail</span>
+          <input name="email" type="email" autocomplete="off" placeholder="friend@gmail.com" value="${escapeAttribute(newChatDraft.email)}" required />
+        </label>
       </div>
       <button class="detail-action" type="submit">Create chat</button>
     </form>
@@ -675,7 +692,7 @@ function renderChats() {
       (contact) => `
         <div class="chat-item ${contact.id === state.activeContactId ? 'active' : ''}" data-contact-id="${contact.id}">
           <button class="chat-main" type="button" data-contact-open="${contact.id}">
-            ${renderAvatar(contact.avatar, contact.color)}
+            ${renderContactAvatar(contact)}
             <span class="chat-copy" data-contact-menu="${contact.id}">
               <span class="chat-title-row">
                 <span class="chat-name">${contact.name}</span>
@@ -704,7 +721,7 @@ function renderConversation() {
   conversation.innerHTML = `
     <header class="conversation-header">
       <button class="mobile-chat-back" type="button" aria-label="Back to chats" data-mobile-chat-back>‹</button>
-      ${renderAvatar(contact.avatar, contact.color, 'small')}
+      ${renderContactAvatar(contact, 'small')}
       <span class="conversation-title">
         <strong>${contact.name}</strong>
         <small>online</small>
@@ -985,7 +1002,7 @@ function showContactMenu(contactId, anchor = {}) {
   menu.setAttribute('role', 'menu');
   menu.innerHTML = `
     <strong>${contact.name}</strong>
-    <small>${contact.phone || 'No phone number saved'}</small>
+    <small>${contact.email || contact.phone || 'No contact detail saved'}</small>
     <button type="button" data-contact-menu-action="edit" data-contact-id="${contact.id}">Edit name and phone</button>
     <button type="button" class="danger-row" data-contact-menu-action="delete-contact" data-contact-id="${contact.id}">Delete username</button>
   `;
@@ -1034,7 +1051,7 @@ function showEditContactDialog(contactId) {
     <section class="action-dialog menu-dialog" role="dialog" aria-label="Edit contact">
       <button class="dialog-close" aria-label="Close">x</button>
       <form class="business-profile-form dialog-form" id="editContactForm" data-contact-id="${contact.id}">
-        ${renderAvatar(contact.avatar, contact.color, 'small')}
+        ${renderContactAvatar(contact, 'small')}
         <h2>Edit contact</h2>
         <p>Change this username and phone number.</p>
         <div class="business-fields">
@@ -1045,6 +1062,10 @@ function showEditContactDialog(contactId) {
           <label class="profile-field">
             <span>Phone number</span>
             <input name="phone" type="tel" autocomplete="off" value="${escapeAttribute(contact.phone || '')}" required />
+          </label>
+          <label class="profile-field">
+            <span>Gmail</span>
+            <input name="email" type="email" autocomplete="off" value="${escapeAttribute(contact.email || '')}" placeholder="friend@gmail.com" required />
           </label>
         </div>
         <button class="detail-action" type="submit">Save contact</button>
@@ -1189,6 +1210,10 @@ function showActionDialog(view) {
             <label class="profile-field">
               <span>Phone number</span>
               <input name="phone" type="tel" autocomplete="off" placeholder="+971 50 123 4567" value="${escapeAttribute(newChatDraft.phone)}" required />
+            </label>
+            <label class="profile-field">
+              <span>Gmail</span>
+              <input name="email" type="email" autocomplete="off" placeholder="friend@gmail.com" value="${escapeAttribute(newChatDraft.email)}" required />
             </label>
           </div>
           <button class="detail-action" type="submit">Save chat</button>
@@ -1512,13 +1537,15 @@ document.addEventListener('input', (event) => {
 });
 
 document.addEventListener('input', (event) => {
-  const newChatInput = event.target.closest('#newChatForm input[name="name"], #newChatForm input[name="phone"]');
+  const newChatInput = event.target.closest('#newChatForm input[name="name"], #newChatForm input[name="phone"], #newChatForm input[name="email"]');
   if (!newChatInput) return;
 
   if (newChatInput.name === 'name') {
     newChatDraft.name = newChatInput.value;
-  } else {
+  } else if (newChatInput.name === 'phone') {
     newChatDraft.phone = newChatInput.value;
+  } else {
+    newChatDraft.email = newChatInput.value;
   }
   saveNewChatDraft();
 });
@@ -1561,14 +1588,19 @@ document.addEventListener('submit', (event) => {
     const formData = new FormData(newChatForm);
     const name = String(formData.get('name') ?? '');
     const phone = String(formData.get('phone') ?? '');
-    if (!name.trim() || !phone.trim()) {
-      showToast('Enter name and phone number');
+    const email = String(formData.get('email') ?? '');
+    if (!name.trim() || !phone.trim() || !email.trim()) {
+      showToast('Enter name, phone number, and Gmail');
+      return;
+    }
+    if (!email.includes('@')) {
+      showToast('Enter a valid Gmail address');
       return;
     }
     activeAction = null;
     activeSettingsPage = null;
     mobileConversationOpen = true;
-    state = createContactChat(state, { name, phone });
+    state = createContactChat(state, { name, phone, email });
     saveChatState();
     clearNewChatDraft();
     newChatForm.closest('.action-dialog-backdrop')?.remove();
@@ -1583,11 +1615,16 @@ document.addEventListener('submit', (event) => {
     const formData = new FormData(editContactForm);
     const name = String(formData.get('name') ?? '');
     const phone = String(formData.get('phone') ?? '');
-    if (!name.trim() || !phone.trim()) {
-      showToast('Enter name and phone number');
+    const email = String(formData.get('email') ?? '');
+    if (!name.trim() || !phone.trim() || !email.trim()) {
+      showToast('Enter name, phone number, and Gmail');
       return;
     }
-    state = updateContactChat(state, editContactForm.dataset.contactId, { name, phone });
+    if (!email.includes('@')) {
+      showToast('Enter a valid Gmail address');
+      return;
+    }
+    state = updateContactChat(state, editContactForm.dataset.contactId, { name, phone, email });
     saveChatState();
     editContactForm.closest('.action-dialog-backdrop')?.remove();
     renderAll();

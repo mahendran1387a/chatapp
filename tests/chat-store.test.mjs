@@ -223,14 +223,19 @@ test('business profile action includes editable username and password fields', (
   assert.ok(view.fields.some((field) => field.name === 'Password' && field.type === 'password'));
 });
 
-test('creates a new chat from a friend name and phone number', () => {
+test('creates a new chat from a friend name, phone number, and Gmail', () => {
   const state = createInitialState();
-  const updated = createContactChat(state, { name: 'Aisha Friend', phone: '+971 50 123 4567' });
+  const updated = createContactChat(state, {
+    name: 'Aisha Friend',
+    phone: '+971 50 123 4567',
+    email: 'aisha.friend@gmail.com'
+  });
   const contact = updated.contacts.find((item) => item.name === 'Aisha Friend');
 
   assert.equal(updated.activeContactId, contact.id);
   assert.equal(contact.phone, '+971 50 123 4567');
-  assert.equal(contact.preview, 'New chat created');
+  assert.equal(contact.email, 'aisha.friend@gmail.com');
+  assert.equal(contact.preview, 'aisha.friend@gmail.com');
   assert.equal(contact.messages[0].text, 'New chat created with +971 50 123 4567');
 });
 
@@ -264,11 +269,14 @@ test('edits a username contact name and phone number', () => {
 
   const updated = updateContactChat(state, contact.id, {
     name: 'Aadhish Home',
-    phone: '+91 98765 43210'
+    phone: '+91 98765 43210',
+    email: 'aadhish.home@gmail.com'
   });
 
   assert.equal(updated.contacts[0].name, 'Aadhish Home');
   assert.equal(updated.contacts[0].phone, '+91 98765 43210');
+  assert.equal(updated.contacts[0].email, 'aadhish.home@gmail.com');
+  assert.equal(updated.contacts[0].preview, 'aadhish.home@gmail.com');
   assert.equal(updated.activeContactId, contact.id);
 });
 
@@ -322,9 +330,12 @@ test('new chat form keeps typed draft values across re-renders and refreshes', (
     assert.match(contents, /window\.localStorage\.removeItem\(newChatDraftStorageKey\)/);
     assert.match(contents, /const newChatDraft = loadNewChatDraft\(\)/);
     assert.match(contents, /newChatDraft\.name = newChatInput\.value/);
+    assert.match(contents, /newChatDraft\.email = newChatInput\.value/);
     assert.match(contents, /if \(activeAction === 'newChat'\) return;/);
     assert.match(contents, /value="\$\{escapeAttribute\(newChatDraft\.name\)\}"/);
     assert.match(contents, /value="\$\{escapeAttribute\(newChatDraft\.phone\)\}"/);
+    assert.match(contents, /value="\$\{escapeAttribute\(newChatDraft\.email\)\}"/);
+    assert.match(contents, /contact-avatar-wrap/);
   }
 });
 

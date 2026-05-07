@@ -118,6 +118,29 @@ button {
   letter-spacing: 0;
 }
 
+.contact-avatar-wrap {
+  position: relative;
+  display: inline-grid;
+  width: max-content;
+}
+
+.gmail-badge {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  color: #fff;
+  background: #f9ab00;
+  font-size: 8px;
+  font-weight: 800;
+  line-height: 1;
+}
+
 .sidebar {
   background: var(--panel);
   border-right: 1px solid var(--line);

@@ -618,9 +618,10 @@ export function selectContact(state, contactId) {
   };
 }
 
-export function createContactChat(state, { name, phone }) {
+export function createContactChat(state, { name, phone, email = '' }) {
   const cleanName = name.trim();
   const cleanPhone = phone.trim();
+  const cleanEmail = email.trim();
   if (!cleanName || !cleanPhone) return state;
 
   const idBase = cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'friend';
@@ -636,9 +637,11 @@ export function createContactChat(state, { name, phone }) {
     id,
     name: cleanName,
     phone: cleanPhone,
+    email: cleanEmail,
     avatar,
-    color: '#0aa884',
-    preview: 'New chat created',
+    color: '#cbd6dc',
+    textColor: '#42545d',
+    preview: cleanEmail || 'New chat created',
     time: 'Now',
     unread: 0,
     favorite: false,
@@ -703,9 +706,10 @@ export function deleteContactChat(state, contactId) {
   };
 }
 
-export function updateContactChat(state, contactId, { name, phone }) {
+export function updateContactChat(state, contactId, { name, phone, email = '' }) {
   const cleanName = name.trim();
   const cleanPhone = phone.trim();
+  const cleanEmail = email.trim();
   if (!cleanName || !cleanPhone) return state;
 
   return {
@@ -716,6 +720,8 @@ export function updateContactChat(state, contactId, { name, phone }) {
             ...contact,
             name: cleanName,
             phone: cleanPhone,
+            email: cleanEmail,
+            preview: cleanEmail || contact.preview,
             avatar: cleanName
               .split(/\s+/)
               .filter(Boolean)
