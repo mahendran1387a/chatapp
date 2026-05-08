@@ -205,6 +205,7 @@ const filters = document.querySelectorAll('.filter');
 const railButtons = document.querySelectorAll('.rail-button[data-section]');
 const panels = document.querySelectorAll('[data-panel]');
 const appShell = document.querySelector('.app-shell');
+const signedInUser = document.querySelector('.signed-in-user');
 const authGate = document.createElement('section');
 authGate.className = 'auth-gate';
 authGate.setAttribute('aria-live', 'polite');
@@ -295,6 +296,23 @@ function renderAuthGate() {
         ? '<button class="google-sign-in" type="button" data-auth-sign-in>Sign in with Google</button>'
         : '<small class="auth-error">Firebase is not configured yet. Add your project keys in src/firebase-config.js.</small>'}
     </div>
+  `;
+}
+
+function renderSignedInUser() {
+  if (!signedInUser) return;
+  if (!currentAuthUser) {
+    signedInUser.innerHTML = '';
+    signedInUser.classList.add('hidden');
+    return;
+  }
+  signedInUser.classList.remove('hidden');
+  signedInUser.innerHTML = `
+    <span class="signed-in-avatar">${escapeHtml(getUserAvatar(currentAuthUser))}</span>
+    <span>
+      <strong>${escapeHtml(getUserName(currentAuthUser))}</strong>
+      <small>${escapeHtml(currentAuthUser?.email ?? '')}</small>
+    </span>
   `;
 }
 
@@ -991,6 +1009,7 @@ function subscribeActiveConversation() {
 
 function renderAll() {
   renderAuthGate();
+  renderSignedInUser();
   if (!currentAuthUser) return;
   renderSettingsPanel();
   renderSection();

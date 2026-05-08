@@ -10,7 +10,11 @@ test('Firebase Google auth gates chat access and removes manual new-chat registr
   assert.match(auth, /GoogleAuthProvider/);
   assert.match(auth, /browserLocalPersistence/);
   assert.match(auth, /setPersistence\(firebase\.auth, browserLocalPersistence\)/);
+  assert.match(auth, /ensureAuthPersistence\(firebase\)[\s\S]*\.then/);
+  assert.match(auth, /let unsubscribe = \(\) => \{\}/);
   assert.match(auth, /signInWithPopup/);
+  assert.match(auth, /prompt: 'select_account'/);
+  assert.match(auth, /signOut\(firebase\.auth\)/);
   assert.match(auth, /collection\(db, 'users'\)/);
   assert.match(auth, /lastLoginAt: serverTimestamp\(\)/);
   assert.match(auth, /onlineStatus: 'online'/);
@@ -20,6 +24,8 @@ test('Firebase Google auth gates chat access and removes manual new-chat registr
   assert.match(auth, /senderEmail: user\.email/);
   assert.match(auth, /senderDisplayName:/);
   assert.match(app, /data-auth-sign-in/);
+  assert.match(app, /document\.querySelector\('\.signed-in-user'\)/);
+  assert.match(app, /currentAuthUser\?\.email/);
   assert.match(app, /currentAuthUser/);
   assert.match(app, /createAuthenticatedContact/);
   assert.match(app, /reconcileAuthenticatedContacts/);

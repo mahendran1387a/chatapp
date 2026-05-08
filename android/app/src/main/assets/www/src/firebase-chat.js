@@ -58,13 +58,24 @@ export function startAuthListener(onChange, onError) {
     onChange(null);
     return () => {};
   }
-  ensureAuthPersistence(firebase).catch((error) => onError?.(error));
 
-  return onAuthStateChanged(
-    firebase.auth,
-    onChange,
-    (error) => onError?.(error)
-  );
+  let cancelled = false;
+  let unsubscribe = () => {};
+  ensureAuthPersistence(firebase)
+    .then(() => {
+      if (cancelled) return;
+      unsubscribe = onAuthStateChanged(
+        firebase.auth,
+        onChange,
+        (error) => onError?.(error)
+      );
+    })
+    .catch((error) => onError?.(error));
+
+  return () => {
+    cancelled = true;
+    unsubscribe();
+  };
 }
 
 export async function signInWithGoogle() {
