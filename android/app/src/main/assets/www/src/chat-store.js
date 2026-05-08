@@ -622,7 +622,13 @@ export function createAuthenticatedContact(state, user) {
 }
 
 export function reconcileAuthenticatedContacts(state, users = [], currentUid = '') {
-  const authenticatedUsers = users.filter((user) => user?.uid && user.uid !== currentUid);
+  const seenEmails = new Set();
+  const authenticatedUsers = users.filter((user) => {
+    const email = typeof user?.email === 'string' ? user.email.trim().toLowerCase() : '';
+    if (!user?.uid || user.uid === currentUid || !email || seenEmails.has(email)) return false;
+    seenEmails.add(email);
+    return true;
+  });
   const existingById = new Map(state.contacts.map((contact) => [contact.id, contact]));
   const contacts = authenticatedUsers.map((user) => buildAuthenticatedContact(user, existingById.get(user.uid)));
   const activeContactId = contacts.some((contact) => contact.id === state.activeContactId)

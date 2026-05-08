@@ -18,7 +18,9 @@ test('Firebase Google auth gates chat access and removes manual new-chat registr
   assert.match(auth, /collection\(db, 'users'\)/);
   assert.match(auth, /lastLoginAt: serverTimestamp\(\)/);
   assert.match(auth, /onlineStatus: 'online'/);
-  assert.match(auth, /user\.onlineStatus === 'online'/);
+  assert.match(auth, /dedupeGoogleUsers/);
+  assert.match(auth, /seenEmails/);
+  assert.doesNotMatch(auth, /user\.onlineStatus === 'online'/);
   assert.match(auth, /setUserOnlineStatus/);
   assert.match(auth, /senderUid: user\.uid/);
   assert.match(auth, /senderEmail: user\.email/);

@@ -277,6 +277,20 @@ test('filters chat contacts to authenticated users only', () => {
   assert.equal(updated.activeContactId, 'uid-friend');
 });
 
+test('deduplicates authenticated users by Gmail account', () => {
+  const state = createInitialState();
+
+  const updated = reconcileAuthenticatedContacts(state, [
+    { uid: 'uid-me', email: 'me@gmail.com', displayName: 'Me' },
+    { uid: 'uid-first', email: 'friend@gmail.com', displayName: 'Friend First' },
+    { uid: 'uid-duplicate', email: 'FRIEND@gmail.com', displayName: 'Friend Duplicate' },
+    { uid: 'uid-other', email: 'other@gmail.com', displayName: 'Other Friend' }
+  ], 'uid-me');
+
+  assert.deepEqual(updated.contacts.map((contact) => contact.email), ['friend@gmail.com', 'other@gmail.com']);
+  assert.deepEqual(updated.contacts.map((contact) => contact.id), ['uid-first', 'uid-other']);
+});
+
 test('marks the latest chat message as deleted from the chat list', () => {
   const savedContact = buildSavedContact({ id: 'aadhish', name: 'aadhish', preview: 'nvjkfmnb' });
   const state = createInitialState({ contacts: [savedContact], activeContactId: savedContact.id });

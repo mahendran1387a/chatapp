@@ -129,6 +129,16 @@ export async function setUserOnlineStatus(user, onlineStatus) {
   }, { merge: true });
 }
 
+function dedupeGoogleUsers(users) {
+  const seenEmails = new Set();
+  return users.filter((user) => {
+    const email = typeof user.email === 'string' ? user.email.trim().toLowerCase() : '';
+    if (!user.uid || !email || seenEmails.has(email)) return false;
+    seenEmails.add(email);
+    return true;
+  });
+}
+
 export function subscribeAuthenticatedUsers(onUsers, onError) {
   const firebase = ensureFirebase();
   if (!firebase) {
@@ -140,9 +150,7 @@ export function subscribeAuthenticatedUsers(onUsers, onError) {
   return onSnapshot(
     collection(db, 'users'),
     (snapshot) => {
-      const users = snapshot.docs
-        .map((item) => ({ uid: item.id, ...item.data() }))
-        .filter((user) => user.uid && user.email && user.onlineStatus === 'online')
+      const users = dedupeGoogleUsers(snapshot.docs.map((item) => ({ uid: item.id, ...item.data() })))
         .sort((first, second) => {
           const firstName = first.displayName || first.email || '';
           const secondName = second.displayName || second.email || '';

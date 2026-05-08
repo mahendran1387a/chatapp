@@ -168,7 +168,6 @@ let unsubscribeUsers = () => {};
 let unsubscribeConversation = () => {};
 let subscribedConversationContactId = '';
 let settingsSearchQuery = '';
-let friendSearchQuery = '';
 let isLoggedOut = false;
 let mobileConversationOpen = false;
 const settingSwitches = new Map();
@@ -516,20 +515,8 @@ function renderMenuView(view) {
   `;
 }
 
-function getVisibleAuthenticatedUsers() {
-  const search = friendSearchQuery.trim().toLowerCase();
-  return authenticatedUsers.filter((user) => {
-    if (user.uid === currentAuthUser?.uid) return false;
-    if (!search) return true;
-    return [getUserName(user), user.email ?? '']
-      .join(' ')
-      .toLowerCase()
-      .includes(search);
-  });
-}
-
 function renderAuthenticatedUserRows(emptyMessage) {
-  const users = getVisibleAuthenticatedUsers();
+  const users = authenticatedUsers.filter((user) => user.uid !== currentAuthUser?.uid);
   return users.length
     ? users.map((user) => `
         <button class="auth-user-row" type="button" data-auth-user-id="${user.uid}">
@@ -547,13 +534,9 @@ function renderAuthenticatedUserList(view) {
     <div class="business-profile-form">
       <div class="detail-illustration"></div>
       <h2>${view.title}</h2>
-      <p>Choose a signed-in Google user to start a chat. Names and emails come from Google only.</p>
-      <label class="friend-search">
-        <span>Find friend by name or Gmail</span>
-        <input id="friendSearchInput" type="search" autocomplete="off" value="${escapeAttribute(friendSearchQuery)}" placeholder="friend@gmail.com" />
-      </label>
+      <p>Choose a Google signed-in user to start a chat. Names and emails come from Google only.</p>
       <div class="auth-user-list">
-        ${renderAuthenticatedUserRows('No matching signed-in Google user was found. Your friend must sign in once before you can chat.')}
+        ${renderAuthenticatedUserRows('No Google signed-in users were found yet. Ask your friend to sign in once, then they will appear here automatically.')}
       </div>
     </div>
   `;
@@ -1309,13 +1292,9 @@ function showActionDialog(view) {
         <div class="business-profile-form dialog-form">
           <div class="detail-illustration"></div>
           <h2>${view.title}</h2>
-          <p>Choose a signed-in Google user to start a chat.</p>
-          <label class="friend-search">
-            <span>Find friend by name or Gmail</span>
-            <input id="friendSearchInput" type="search" autocomplete="off" value="${escapeAttribute(friendSearchQuery)}" placeholder="friend@gmail.com" />
-          </label>
+          <p>Choose a Google signed-in user to start a chat.</p>
           <div class="auth-user-list">
-            ${renderAuthenticatedUserRows('No matching signed-in Google user was found.')}
+            ${renderAuthenticatedUserRows('No Google signed-in users were found yet.')}
           </div>
         </div>
       </section>
@@ -1666,16 +1645,6 @@ document.addEventListener('input', (event) => {
 });
 
 document.addEventListener('input', (event) => {
-  const friendSearchInput = event.target.closest('#friendSearchInput');
-  if (friendSearchInput) {
-    friendSearchQuery = friendSearchInput.value;
-    const list = document.querySelector('.auth-user-list');
-    if (list) {
-      list.innerHTML = renderAuthenticatedUserRows('No matching signed-in Google user was found. Your friend must sign in once before you can chat.');
-    }
-    return;
-  }
-
   const newChatInput = event.target.closest('#newChatForm input[name="name"], #newChatForm input[name="phone"], #newChatForm input[name="email"]');
   if (!newChatInput) return;
 
