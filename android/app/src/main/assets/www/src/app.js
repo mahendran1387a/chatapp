@@ -287,8 +287,8 @@ function renderAuthGate() {
   authGate.innerHTML = `
     <div class="auth-card">
       <img src="app-icon.svg" alt="" />
-      <h1>ChatApp</h1>
-      <p>Sign in with your Google account so nobody can pretend to be you.</p>
+      <h1>Kids WhatsApp</h1>
+      <p>A bright, safe place to chat with friends after Google sign-in.</p>
       ${authError ? `<small class="auth-error">${authError}</small>` : ''}
       ${configured
         ? '<button class="google-sign-in" type="button" data-auth-sign-in>Sign in with Google</button>'
@@ -980,7 +980,7 @@ function renderSection() {
     conversation.classList.remove('hidden');
     emptyState.innerHTML = `
       <div class="empty-illustration">WA</div>
-      <h2>WhatsApp Business on Web</h2>
+      <h2>Kids WhatsApp on Web</h2>
       <p>Grow, organise and manage your account.</p>
       <small>Your personal messages are end-to-end encrypted</small>
     `;

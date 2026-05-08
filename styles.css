@@ -177,6 +177,7 @@ button {
   margin: 0;
   font-size: 24px;
   font-weight: 700;
+  color: #063f5c;
 }
 
 .header-actions {
@@ -240,9 +241,9 @@ button {
 }
 
 .filter.active {
-  color: #0b6b56;
-  background: #e7fce3;
-  border-color: #c9eec4;
+  color: #075e54;
+  background: #fff7b8;
+  border-color: #f3df61;
 }
 
 .notice {
@@ -1851,8 +1852,10 @@ button {
   justify-items: center;
   width: min(420px, 100%);
   padding: 30px 24px;
-  background: #fff;
-  border: 1px solid var(--line);
+  background:
+    linear-gradient(#ffffff, #ffffff) padding-box,
+    linear-gradient(135deg, #19e6d2, #fff176, #ff7ab6) border-box;
+  border: 3px solid transparent;
   border-radius: 8px;
   box-shadow: 0 18px 54px rgba(17, 27, 33, 0.14);
   text-align: center;
@@ -1861,11 +1864,13 @@ button {
 .auth-card h1 {
   margin: 14px 0 8px;
   font-size: 28px;
+  color: #063f5c;
 }
 
 .auth-card img {
   width: 76px;
   height: 76px;
+  filter: drop-shadow(0 10px 18px rgba(0, 128, 105, 0.22));
 }
 
 .auth-card p {
