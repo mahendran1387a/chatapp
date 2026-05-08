@@ -530,6 +530,45 @@ function makeGmailFromName(name) {
   return `${localPart || 'friend'}@gmail.com`;
 }
 
+function getUserDisplayName(user) {
+  return user.displayName?.trim() || user.email?.split('@')[0] || 'Google user';
+}
+
+function getUserAvatar(user) {
+  return getUserDisplayName(user)
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase();
+}
+
+function buildAuthenticatedContact(user, existingContact = {}) {
+  const name = getUserDisplayName(user);
+  const email = user.email ?? makeGmailFromName(name);
+  return {
+    ...existingContact,
+    id: user.uid,
+    uid: user.uid,
+    name,
+    email,
+    phone: existingContact.phone ?? '',
+    photoURL: user.photoURL ?? existingContact.photoURL ?? '',
+    avatar: getUserAvatar(user),
+    color: existingContact.color ?? '#cbd6dc',
+    textColor: existingContact.textColor ?? '#42545d',
+    preview: existingContact.messages?.at(-1)?.deleted
+      ? 'This message was deleted'
+      : existingContact.messages?.at(-1)?.text ?? email,
+    time: existingContact.time ?? 'Now',
+    unread: existingContact.unread ?? 0,
+    favorite: existingContact.favorite ?? false,
+    group: existingContact.group ?? false,
+    messages: existingContact.messages ?? []
+  };
+}
+
 function withContactProfile(contact) {
   const email = typeof contact.email === 'string' && contact.email.trim()
     ? contact.email.trim()
@@ -540,6 +579,37 @@ function withContactProfile(contact) {
     preview: contact.deleted ? 'This message was deleted' : email,
     color: contact.color ?? '#cbd6dc',
     textColor: contact.textColor ?? '#42545d'
+  };
+}
+
+export function createAuthenticatedContact(state, user) {
+  if (!user?.uid) return state;
+  const existingContact = state.contacts.find((contact) => contact.id === user.uid);
+  const contact = buildAuthenticatedContact(user, existingContact);
+  const contacts = existingContact
+    ? state.contacts.map((item) => (item.id === user.uid ? contact : item))
+    : [contact, ...state.contacts];
+
+  return {
+    ...state,
+    activeSection: 'chats',
+    activeContactId: user.uid,
+    contacts
+  };
+}
+
+export function reconcileAuthenticatedContacts(state, users = [], currentUid = '') {
+  const authenticatedUsers = users.filter((user) => user?.uid && user.uid !== currentUid);
+  const existingById = new Map(state.contacts.map((contact) => [contact.id, contact]));
+  const contacts = authenticatedUsers.map((user) => buildAuthenticatedContact(user, existingById.get(user.uid)));
+  const activeContactId = contacts.some((contact) => contact.id === state.activeContactId)
+    ? state.activeContactId
+    : contacts[0]?.id;
+
+  return {
+    ...state,
+    activeContactId,
+    contacts
   };
 }
 
@@ -819,7 +889,18 @@ export function toggleChannelFollow(state, channelId) {
   };
 }
 
-export function sendMessage(state, text, { senderId = '' } = {}) {
+export function sendMessage(
+  state,
+  text,
+  {
+    senderId = '',
+    senderUid = '',
+    senderEmail = '',
+    senderDisplayName = '',
+    senderPhotoURL = '',
+    timestamp = Date.now()
+  } = {}
+) {
   const cleanText = text.trim();
   if (!cleanText) return state;
 
@@ -836,6 +917,12 @@ export function sendMessage(state, text, { senderId = '' } = {}) {
         text: cleanText,
         time,
         senderId
+        ,
+        senderUid,
+        senderEmail,
+        senderDisplayName,
+        senderPhotoURL,
+        timestamp
       };
       return {
         ...contact,

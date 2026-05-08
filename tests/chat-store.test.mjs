@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
+  createAuthenticatedContact,
   createContactChat,
   createInitialState,
   filterContacts,
@@ -14,6 +15,7 @@ import {
   deleteContactChat,
   deleteLatestContactMessage,
   deleteMessage,
+  reconcileAuthenticatedContacts,
   updateContactChat,
   updateMessage,
   searchSettings,
@@ -111,13 +113,22 @@ test('sends a message to the active contact without an automatic reply', () => {
   const state = createInitialState({ contacts: [savedContact], activeContactId: savedContact.id });
   const before = getActiveContact(state).messages.length;
 
-  const updated = sendMessage(state, 'Are we meeting today?', { senderId: 'device-a' });
+  const updated = sendMessage(state, 'Are we meeting today?', {
+    senderId: 'device-a',
+    senderUid: 'uid-a',
+    senderEmail: 'aisha@gmail.com',
+    senderDisplayName: 'Aisha Google',
+    senderPhotoURL: 'https://example.com/aisha.png'
+  });
   const messages = getActiveContact(updated).messages;
 
   assert.equal(messages.length, before + 1);
   assert.equal(messages.at(-1).text, 'Are we meeting today?');
   assert.equal(messages.at(-1).direction, 'out');
   assert.equal(messages.at(-1).senderId, 'device-a');
+  assert.equal(messages.at(-1).senderUid, 'uid-a');
+  assert.equal(messages.at(-1).senderEmail, 'aisha@gmail.com');
+  assert.equal(messages.at(-1).senderDisplayName, 'Aisha Google');
 });
 
 test('switches between chat and status sections', () => {
@@ -257,6 +268,38 @@ test('creates a Gmail contact display from only the friend name when Gmail is bl
   assert.equal(contact.preview, 'paper.friend@gmail.com');
 });
 
+test('creates contacts only from authenticated Firebase users', () => {
+  const state = createInitialState();
+  const updated = createAuthenticatedContact(state, {
+    uid: 'uid-aisha',
+    email: 'aisha@gmail.com',
+    displayName: 'Aisha Google',
+    photoURL: 'https://example.com/aisha.png'
+  });
+  const contact = updated.contacts[0];
+
+  assert.equal(contact.id, 'uid-aisha');
+  assert.equal(contact.uid, 'uid-aisha');
+  assert.equal(contact.email, 'aisha@gmail.com');
+  assert.equal(contact.name, 'Aisha Google');
+  assert.equal(contact.photoURL, 'https://example.com/aisha.png');
+});
+
+test('filters chat contacts to authenticated users only', () => {
+  const manual = buildSavedContact({ id: 'manual-fake', name: 'Fake User' });
+  const authenticated = buildSavedContact({ id: 'uid-friend', uid: 'uid-friend', name: 'Friend' });
+  const state = createInitialState({ contacts: [manual, authenticated], activeContactId: manual.id });
+
+  const updated = reconcileAuthenticatedContacts(state, [
+    { uid: 'uid-me', email: 'me@gmail.com', displayName: 'Me' },
+    { uid: 'uid-friend', email: 'friend@gmail.com', displayName: 'Friend Google' }
+  ], 'uid-me');
+
+  assert.deepEqual(updated.contacts.map((contact) => contact.id), ['uid-friend']);
+  assert.equal(updated.contacts[0].email, 'friend@gmail.com');
+  assert.equal(updated.activeContactId, 'uid-friend');
+});
+
 test('marks the latest chat message as deleted from the chat list', () => {
   const savedContact = buildSavedContact({ id: 'aadhish', name: 'aadhish', preview: 'nvjkfmnb' });
   const state = createInitialState({ contacts: [savedContact], activeContactId: savedContact.id });
@@ -336,25 +379,22 @@ test('message actions open from right-clicking a message bubble only', () => {
   assert.doesNotMatch(contents, /data-contact-menu-action="delete-message"/);
 });
 
-test('new chat form keeps typed draft values across re-renders and refreshes', () => {
+test('new chat flow uses authenticated Google users instead of typed names', () => {
   for (const relativePath of [
     '../src/app.js',
     '../android/app/src/main/assets/www/src/app.js'
   ]) {
     const contents = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
-    assert.match(contents, /const newChatDraftStorageKey = 'chatapp\.newChatDraft\.v1'/);
-    assert.match(contents, /function loadNewChatDraft\(\)/);
-    assert.match(contents, /function saveNewChatDraft\(\)/);
-    assert.match(contents, /window\.localStorage\.removeItem\(newChatDraftStorageKey\)/);
-    assert.match(contents, /const newChatDraft = loadNewChatDraft\(\)/);
-    assert.match(contents, /newChatDraft\.name = newChatInput\.value/);
-    assert.match(contents, /newChatDraft\.email = newChatInput\.value/);
+    assert.match(contents, /function renderAuthenticatedUserList\(view\)/);
+    assert.match(contents, /data-auth-user-id/);
+    assert.match(contents, /authenticatedUsers\.filter/);
+    assert.match(contents, /createAuthenticatedContact\(state, selectedUser\)/);
+    assert.match(contents, /Choose a signed-in Google user/);
     assert.match(contents, /function getContactEmail\(contact\)/);
     assert.match(contents, /if \(activeAction === 'newChat'\) return;/);
-    assert.match(contents, /value="\$\{escapeAttribute\(newChatDraft\.name\)\}"/);
-    assert.match(contents, /value="\$\{escapeAttribute\(newChatDraft\.phone\)\}"/);
-    assert.match(contents, /value="\$\{escapeAttribute\(newChatDraft\.email\)\}"/);
     assert.match(contents, /contact-avatar-wrap/);
+    assert.doesNotMatch(contents, /value="\$\{escapeAttribute\(newChatDraft\.name\)\}"/);
+    assert.doesNotMatch(contents, /placeholder="Aisha Friend"/);
   }
 });
 

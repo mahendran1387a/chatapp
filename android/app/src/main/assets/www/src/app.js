@@ -1,5 +1,5 @@
 import {
-  createContactChat,
+  createAuthenticatedContact,
   createInitialState,
   deleteContactChat,
   deleteMessage,
@@ -9,6 +9,7 @@ import {
   getSettingDangerView,
   getSettingOptionView,
   getSettingsPage,
+  reconcileAuthenticatedContacts,
   searchSettings,
   selectContact,
   sendMessage,
@@ -17,6 +18,16 @@ import {
   updateContactChat,
   updateMessage
 } from './chat-store.js';
+import {
+  getFirebaseSetupStatus,
+  logoutGoogleUser,
+  saveUserProfile,
+  sendFirebaseMessage,
+  signInWithGoogle,
+  startAuthListener,
+  subscribeAuthenticatedUsers,
+  subscribeConversationMessages
+} from './firebase-chat.js';
 
 const savedChatStorageKey = 'chatapp.savedChats.v1';
 const clientIdStorageKey = 'chatapp.clientId.v1';
@@ -132,6 +143,7 @@ function saveChatState() {
   } catch {
     // Incognito can block local storage, so the server save below is the important fallback.
   }
+  if (currentAuthUser) return;
   isSavingChats = true;
   saveServerChatState(payload)
     .catch(() => showToast('Could not save chat on this browser'))
@@ -148,6 +160,13 @@ let activeAction = null;
 let activeSettingsPage = null;
 let activeContactMenuId = null;
 let activeMessageMenu = null;
+let currentAuthUser = null;
+let authReady = false;
+let authError = '';
+let authenticatedUsers = [];
+let unsubscribeUsers = () => {};
+let unsubscribeConversation = () => {};
+let subscribedConversationContactId = '';
 let settingsSearchQuery = '';
 let isLoggedOut = false;
 let mobileConversationOpen = false;
@@ -184,6 +203,11 @@ const channelList = document.querySelector('#channelList');
 const filters = document.querySelectorAll('.filter');
 const railButtons = document.querySelectorAll('.rail-button[data-section]');
 const panels = document.querySelectorAll('[data-panel]');
+const appShell = document.querySelector('.app-shell');
+const authGate = document.createElement('section');
+authGate.className = 'auth-gate';
+authGate.setAttribute('aria-live', 'polite');
+document.body.prepend(authGate);
 
 function initials(name) {
   return name
@@ -235,9 +259,54 @@ function isTextEntryActive() {
   return Boolean(active?.matches('input, textarea, [contenteditable="true"]'));
 }
 
+function getUserName(user) {
+  return user?.displayName || user?.email || 'Google user';
+}
+
+function getUserAvatar(user) {
+  return initials(getUserName(user)) || 'GU';
+}
+
+function renderUserPhoto(user, extraClass = '') {
+  if (user?.photoURL) {
+    return `<img class="avatar ${extraClass}" src="${escapeAttribute(user.photoURL)}" alt="" />`;
+  }
+  return renderAvatar(getUserAvatar(user), '#cbd6dc', extraClass, '#42545d');
+}
+
+function renderAuthGate() {
+  const configured = getFirebaseSetupStatus().configured;
+  appShell.classList.toggle('auth-locked', !currentAuthUser);
+  if (currentAuthUser) {
+    authGate.classList.add('hidden');
+    authGate.innerHTML = '';
+    return;
+  }
+
+  authGate.classList.remove('hidden');
+  authGate.innerHTML = `
+    <div class="auth-card">
+      <img src="app-icon.svg" alt="" />
+      <h1>ChatApp</h1>
+      <p>Sign in with your Google account so nobody can pretend to be you.</p>
+      ${authError ? `<small class="auth-error">${authError}</small>` : ''}
+      ${configured
+        ? '<button class="google-sign-in" type="button" data-auth-sign-in>Sign in with Google</button>'
+        : '<small class="auth-error">Firebase is not configured yet. Add your project keys in src/firebase-config.js.</small>'}
+    </div>
+  `;
+}
+
+function requireAuth() {
+  if (currentAuthUser) return true;
+  showToast('Sign in with Google first');
+  renderAuthGate();
+  return false;
+}
+
 function renderDetailView(view, type = 'action') {
   if (view.form === 'newChat') {
-    renderNewChatForm(view);
+    renderAuthenticatedUserList(view);
     return;
   }
   if (view.form === 'createChannel') {
@@ -452,30 +521,26 @@ function renderMenuView(view) {
   `;
 }
 
-function renderNewChatForm(view) {
+function renderAuthenticatedUserList(view) {
   emptyState.classList.remove('hidden');
   conversation.classList.add('hidden');
+  const users = authenticatedUsers.filter((user) => user.uid !== currentAuthUser?.uid);
   emptyState.innerHTML = `
-    <form class="business-profile-form" id="newChatForm">
+    <div class="business-profile-form">
       <div class="detail-illustration"></div>
       <h2>${view.title}</h2>
-      <p>Add your friend by name and phone number, then start chatting.</p>
-      <div class="business-fields">
-        <label class="profile-field">
-          <span>Friend name</span>
-          <input name="name" type="text" autocomplete="off" placeholder="Aisha Friend" value="${escapeAttribute(newChatDraft.name)}" required />
-        </label>
-        <label class="profile-field">
-          <span>Phone number</span>
-          <input name="phone" type="tel" autocomplete="off" placeholder="+971 50 123 4567" value="${escapeAttribute(newChatDraft.phone)}" required />
-        </label>
-        <label class="profile-field">
-          <span>Gmail</span>
-          <input name="email" type="email" autocomplete="off" placeholder="friend@gmail.com" value="${escapeAttribute(newChatDraft.email)}" />
-        </label>
+      <p>Choose a signed-in Google user to start a chat. Names and emails come from Google only.</p>
+      <div class="auth-user-list">
+        ${users.length
+          ? users.map((user) => `
+              <button class="auth-user-row" type="button" data-auth-user-id="${user.uid}">
+                ${renderUserPhoto(user, 'small')}
+                <span><strong>${escapeHtml(getUserName(user))}</strong><small>${escapeHtml(user.email ?? '')}</small></span>
+              </button>
+            `).join('')
+          : '<p class="empty-copy">No other Google users have signed in yet.</p>'}
       </div>
-      <button class="detail-action" type="submit">Create chat</button>
-    </form>
+    </div>
   `;
 }
 
@@ -656,6 +721,10 @@ function renderSettingsScrollableContent() {
           <span class="line-icon logout-icon"></span>
           <span><strong>Log out</strong></span>
         </button>
+        <button class="settings-row logout-row" data-auth-logout>
+          <span class="line-icon logout-icon"></span>
+          <span><strong>Log out of Google</strong><small>${escapeHtml(currentAuthUser?.email ?? '')}</small></span>
+        </button>
       </div>
   `;
 }
@@ -741,12 +810,13 @@ function renderConversation() {
         .map(
           (message) => {
             const direction = message.senderId
-              ? message.senderId === currentClientId
+              ? (message.senderUid ? message.senderUid === currentAuthUser?.uid : message.senderId === currentClientId)
                 ? 'out'
                 : 'in'
               : message.direction;
             return `
               <div class="bubble ${direction} ${message.deleted ? 'deleted' : ''}" data-message-id="${message.id}" data-contact-id="${contact.id}">
+                ${message.senderDisplayName ? `<strong class="sender-label">${escapeHtml(message.senderDisplayName)}</strong>` : ''}
                 ${message.deleted ? 'This message was deleted' : escapeHtml(message.text)}
                 <time>${message.time}</time>
               </div>
@@ -777,10 +847,20 @@ function renderConversation() {
     }
   });
   resizeComposer();
-  conversation.querySelector('#composer').addEventListener('submit', (event) => {
+  conversation.querySelector('#composer').addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (!requireAuth()) return;
     const input = conversation.querySelector('#messageInput');
-    state = sendMessage(state, input.value, { senderId: currentClientId });
+    const text = input.value;
+    const activeContact = getActiveContact(state);
+    state = sendMessage(state, text, {
+      senderId: currentClientId,
+      senderUid: currentAuthUser.uid,
+      senderEmail: currentAuthUser.email ?? '',
+      senderDisplayName: getUserName(currentAuthUser),
+      senderPhotoURL: currentAuthUser.photoURL ?? ''
+    });
+    await sendFirebaseMessage(activeContact.uid, text, currentAuthUser).catch((error) => showToast(error.message));
     saveChatState();
     input.value = '';
     renderAll();
@@ -917,16 +997,50 @@ function renderSettingsPanel() {
   settingsPanel.innerHTML = activeSettingsPage ? renderSettingsPage(activeSettingsPage) : renderSettingsHome();
 }
 
+function subscribeActiveConversation() {
+  const activeContact = getActiveContact(state);
+  if (!currentAuthUser || !activeContact?.uid || subscribedConversationContactId === activeContact.uid) return;
+  unsubscribeConversation();
+  subscribedConversationContactId = activeContact.uid;
+  unsubscribeConversation = subscribeConversationMessages(
+    currentAuthUser.uid,
+    activeContact.uid,
+    (messages) => {
+      state = {
+        ...state,
+        contacts: state.contacts.map((contact) =>
+          contact.id === activeContact.uid
+            ? {
+                ...contact,
+                messages,
+                preview: messages.at(-1)?.deleted ? 'This message was deleted' : messages.at(-1)?.text ?? contact.email,
+                time: messages.at(-1)?.time ?? contact.time
+              }
+            : contact
+        )
+      };
+      if (!isTextEntryActive()) renderAll();
+    },
+    (error) => showToast(error.message)
+  );
+}
+
 function renderAll() {
+  renderAuthGate();
+  if (!currentAuthUser) return;
   renderSettingsPanel();
   renderSection();
   renderChats();
   renderStatuses();
   renderChannels();
-  if (state.activeSection === 'chats' && !activeAction) renderConversation();
+  if (state.activeSection === 'chats' && !activeAction) {
+    renderConversation();
+    subscribeActiveConversation();
+  }
 }
 
 async function hydrateChatsFromServer() {
+  if (currentAuthUser) return;
   const serverState = await loadServerChatState();
   if (!Array.isArray(serverState.contacts) || !serverState.contacts.length) return;
   const serverSnapshot = stringifyChatPayload({
@@ -1008,7 +1122,11 @@ function showContactMenu(contactId, anchor = {}) {
   menu.innerHTML = `
     <strong>${contact.name}</strong>
     <small>${getContactEmail(contact) || contact.phone || 'No contact detail saved'}</small>
-    <button type="button" data-contact-menu-action="edit" data-contact-id="${contact.id}">Edit name and phone</button>
+    ${
+      contact.uid
+        ? '<small class="verified-contact-note">Google verified contact</small>'
+        : `<button type="button" data-contact-menu-action="edit" data-contact-id="${contact.id}">Edit name and phone</button>`
+    }
     <button type="button" class="danger-row" data-contact-menu-action="delete-contact" data-contact-id="${contact.id}">Delete username</button>
   `;
   document.body.append(menu);
@@ -1046,6 +1164,10 @@ function showMessageMenu(contactId, messageId, anchor = {}) {
 function showEditContactDialog(contactId) {
   const contact = getContactById(contactId);
   if (!contact) return;
+  if (contact.uid) {
+    showToast('Google contact details cannot be edited here');
+    return;
+  }
   closeContactMenu();
   const existing = document.querySelector('.action-dialog-backdrop');
   if (existing) existing.remove();
@@ -1200,29 +1322,25 @@ function showActionDialog(view) {
       </section>
     `;
   } else if (view.form === 'newChat') {
+    const users = authenticatedUsers.filter((user) => user.uid !== currentAuthUser?.uid);
     backdrop.innerHTML = `
       <section class="action-dialog menu-dialog" role="dialog" aria-label="${view.title}">
         <button class="dialog-close" aria-label="Close">x</button>
-        <form class="business-profile-form dialog-form" id="newChatForm">
+        <div class="business-profile-form dialog-form">
           <div class="detail-illustration"></div>
           <h2>${view.title}</h2>
-          <p>Add your friend by name and phone number, then save the chat.</p>
-          <div class="business-fields">
-            <label class="profile-field">
-              <span>Friend name</span>
-              <input name="name" type="text" autocomplete="off" placeholder="Aisha Friend" value="${escapeAttribute(newChatDraft.name)}" required />
-            </label>
-            <label class="profile-field">
-              <span>Phone number</span>
-              <input name="phone" type="tel" autocomplete="off" placeholder="+971 50 123 4567" value="${escapeAttribute(newChatDraft.phone)}" required />
-            </label>
-            <label class="profile-field">
-              <span>Gmail</span>
-              <input name="email" type="email" autocomplete="off" placeholder="friend@gmail.com" value="${escapeAttribute(newChatDraft.email)}" />
-            </label>
+          <p>Choose a signed-in Google user to start a chat.</p>
+          <div class="auth-user-list">
+            ${users.length
+              ? users.map((user) => `
+                  <button class="auth-user-row" type="button" data-auth-user-id="${user.uid}">
+                    ${renderUserPhoto(user, 'small')}
+                    <span><strong>${escapeHtml(getUserName(user))}</strong><small>${escapeHtml(user.email ?? '')}</small></span>
+                  </button>
+                `).join('')
+              : '<p class="empty-copy">No other Google users have signed in yet.</p>'}
           </div>
-          <button class="detail-action" type="submit">Save chat</button>
-        </form>
+        </div>
       </section>
     `;
   } else {
@@ -1360,6 +1478,35 @@ document.querySelectorAll('[data-jump-section]').forEach((button) => {
 
 document.addEventListener('click', (event) => {
   if (event.target.closest('[data-settings-dismiss]')) return;
+
+  if (event.target.closest('[data-auth-sign-in]')) {
+    signInWithGoogle().catch((error) => {
+      authError = error.message;
+      renderAuthGate();
+    });
+    return;
+  }
+
+  if (event.target.closest('[data-auth-logout]')) {
+    logoutGoogleUser().catch((error) => showToast(error.message));
+    return;
+  }
+
+  const authUserButton = event.target.closest('[data-auth-user-id]');
+  if (authUserButton) {
+    const selectedUser = authenticatedUsers.find((user) => user.uid === authUserButton.dataset.authUserId);
+    if (selectedUser) {
+      activeAction = null;
+      activeSettingsPage = null;
+      mobileConversationOpen = true;
+      state = createAuthenticatedContact(state, selectedUser);
+      saveChatState();
+      document.querySelector('.action-dialog-backdrop')?.remove();
+      renderAll();
+      showToast(`Chat opened with ${getUserName(selectedUser)}`);
+    }
+    return;
+  }
 
   const contactMenuAction = event.target.closest('[data-contact-menu-action]');
   if (contactMenuAction) {
@@ -1590,33 +1737,19 @@ document.addEventListener('submit', (event) => {
   const newChatForm = event.target.closest('#newChatForm');
   if (newChatForm) {
     event.preventDefault();
-    const formData = new FormData(newChatForm);
-    const name = String(formData.get('name') ?? '');
-    const phone = String(formData.get('phone') ?? '');
-    const email = String(formData.get('email') ?? '');
-    if (!name.trim() || !phone.trim()) {
-      showToast('Enter name and phone number');
-      return;
-    }
-    if (email.trim() && !email.includes('@')) {
-      showToast('Enter a valid Gmail address');
-      return;
-    }
-    activeAction = null;
-    activeSettingsPage = null;
-    mobileConversationOpen = true;
-    state = createContactChat(state, { name, phone, email });
-    saveChatState();
-    clearNewChatDraft();
-    newChatForm.closest('.action-dialog-backdrop')?.remove();
-    renderAll();
-    showToast('Chat saved');
+    showToast('Choose a signed-in Google user');
     return;
   }
 
   const editContactForm = event.target.closest('#editContactForm');
   if (editContactForm) {
     event.preventDefault();
+    const contact = getContactById(editContactForm.dataset.contactId);
+    if (contact?.uid) {
+      showToast('Google contact details cannot be edited here');
+      editContactForm.closest('.action-dialog-backdrop')?.remove();
+      return;
+    }
     const formData = new FormData(editContactForm);
     const name = String(formData.get('name') ?? '');
     const phone = String(formData.get('phone') ?? '');
@@ -1696,6 +1829,45 @@ document.addEventListener('click', (event) => {
   renderAll();
 });
 
+function startFirebaseAuth() {
+  startAuthListener(
+    async (user) => {
+      authReady = true;
+      authError = '';
+      currentAuthUser = user;
+      unsubscribeUsers();
+      unsubscribeConversation();
+      subscribedConversationContactId = '';
+      if (!user) {
+        authenticatedUsers = [];
+        renderAll();
+        return;
+      }
+
+      await saveUserProfile(user).catch((error) => {
+        authError = error.message;
+      });
+      unsubscribeUsers = subscribeAuthenticatedUsers(
+        (users) => {
+          authenticatedUsers = users;
+          state = reconcileAuthenticatedContacts(state, users, user.uid);
+          saveChatState();
+          renderAll();
+        },
+        (error) => showToast(error.message)
+      );
+      renderAll();
+    },
+    (error) => {
+      authReady = true;
+      authError = error.message;
+      currentAuthUser = null;
+      renderAll();
+    }
+  );
+}
+
 renderAll();
+startFirebaseAuth();
 hydrateChatsFromServer();
 startLiveChatSync();

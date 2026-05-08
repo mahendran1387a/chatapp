@@ -1,0 +1,64 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userOwnsProfile(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function userIsParticipant() {
+      return signedIn() &&
+        resource.data.participants is list &&
+        resource.data.participants.hasAny([request.auth.uid]);
+    }
+
+    function requestUserIsParticipant() {
+      return signedIn() &&
+        request.resource.data.participants is list &&
+        request.resource.data.participants.hasAny([request.auth.uid]);
+    }
+
+    function validSenderIdentity() {
+      return request.resource.data.senderUid == request.auth.uid &&
+        request.resource.data.senderEmail == request.auth.token.email &&
+        request.resource.data.senderDisplayName is string &&
+        request.resource.data.text is string;
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow create, update: if userOwnsProfile(uid)
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email == request.auth.token.email;
+      allow delete: if false;
+    }
+
+    match /conversations/{conversationId} {
+      allow read: if userIsParticipant();
+      allow create: if requestUserIsParticipant();
+      allow update: if userIsParticipant() && requestUserIsParticipant();
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if exists(/databases/$(database)/documents/conversations/$(conversationId))
+          && get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants.hasAny([request.auth.uid]);
+        allow create: if signedIn()
+          && validSenderIdentity()
+          && request.resource.data.participants.hasAny([request.auth.uid]);
+        allow update: if signedIn()
+          && resource.data.senderUid == request.auth.uid
+          && request.resource.data.senderUid == resource.data.senderUid
+          && request.resource.data.senderEmail == resource.data.senderEmail;
+        allow delete: if false;
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
