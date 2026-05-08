@@ -18,7 +18,9 @@ test('Firebase Google auth gates chat access and removes manual new-chat registr
   assert.match(app, /createAuthenticatedContact/);
   assert.match(app, /reconcileAuthenticatedContacts/);
   assert.doesNotMatch(app, /placeholder="Aisha Friend"/);
-  assert.match(config, /apiKey: 'YOUR_FIREBASE_API_KEY'/);
+  assert.match(config, /apiKey: 'AIzaSyCTwbG9VfUstguvtiEhCLWLiO2U1SZFoGM'/);
+  assert.match(config, /projectId: 'kidswhatsapp-6fffb'/);
+  assert.doesNotMatch(config, /apiKey: 'YOUR_/);
 });
 
 test('Firestore rules require auth uid and sender identity to match request auth', () => {

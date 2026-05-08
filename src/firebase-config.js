@@ -1,12 +1,12 @@
 // Frontend Firebase config is safe to publish. Do not put Firebase Admin SDK
 // service account keys or other server credentials in this file.
 export const firebaseConfig = {
-  apiKey: 'YOUR_FIREBASE_API_KEY',
-  authDomain: 'YOUR_FIREBASE_PROJECT_ID.firebaseapp.com',
-  projectId: 'YOUR_FIREBASE_PROJECT_ID',
-  storageBucket: 'YOUR_FIREBASE_PROJECT_ID.appspot.com',
-  messagingSenderId: 'YOUR_FIREBASE_MESSAGING_SENDER_ID',
-  appId: 'YOUR_FIREBASE_APP_ID'
+  apiKey: 'AIzaSyCTwbG9VfUstguvtiEhCLWLiO2U1SZFoGM',
+  authDomain: 'kidswhatsapp-6fffb.firebaseapp.com',
+  projectId: 'kidswhatsapp-6fffb',
+  storageBucket: 'kidswhatsapp-6fffb.firebasestorage.app',
+  messagingSenderId: '1031037370021',
+  appId: '1:1031037370021:web:bb4cf7e5e691af2470174c'
 };
 
 export function isFirebaseConfigured() {
