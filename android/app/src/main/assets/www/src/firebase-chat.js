@@ -1,8 +1,10 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
 import {
+  browserLocalPersistence,
   getAuth,
   GoogleAuthProvider,
   onAuthStateChanged,
+  setPersistence,
   signInWithPopup,
   signOut
 } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js';
@@ -25,6 +27,7 @@ import { firebaseConfig, isFirebaseConfigured } from './firebase-config.js';
 let app;
 let auth;
 let db;
+let authPersistencePromise;
 
 export function getFirebaseSetupStatus() {
   return {
@@ -42,12 +45,20 @@ function ensureFirebase() {
   return { auth, db };
 }
 
+function ensureAuthPersistence(firebase) {
+  if (!authPersistencePromise) {
+    authPersistencePromise = setPersistence(firebase.auth, browserLocalPersistence);
+  }
+  return authPersistencePromise;
+}
+
 export function startAuthListener(onChange, onError) {
   const firebase = ensureFirebase();
   if (!firebase) {
     onChange(null);
     return () => {};
   }
+  ensureAuthPersistence(firebase).catch((error) => onError?.(error));
 
   return onAuthStateChanged(
     firebase.auth,
@@ -59,6 +70,7 @@ export function startAuthListener(onChange, onError) {
 export async function signInWithGoogle() {
   const firebase = ensureFirebase();
   if (!firebase) throw new Error('Firebase is not configured yet.');
+  await ensureAuthPersistence(firebase);
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
   return signInWithPopup(firebase.auth, provider);
@@ -67,7 +79,11 @@ export async function signInWithGoogle() {
 export async function logoutGoogleUser() {
   const firebase = ensureFirebase();
   if (!firebase) return;
-  await signOut(firebase.auth);
+  try {
+    await setUserOnlineStatus(firebase.auth.currentUser, 'offline');
+  } finally {
+    await signOut(firebase.auth);
+  }
 }
 
 export function toUserProfile(user) {
@@ -76,6 +92,9 @@ export function toUserProfile(user) {
     email: user.email ?? '',
     displayName: user.displayName ?? user.email ?? 'Google user',
     photoURL: user.photoURL ?? '',
+    lastLoginAt: serverTimestamp(),
+    onlineStatus: 'online',
+    isOnline: true,
     updatedAt: serverTimestamp()
   };
 }
@@ -84,6 +103,19 @@ export async function saveUserProfile(user) {
   const firebase = ensureFirebase();
   if (!firebase || !user) return;
   await setDoc(doc(firebase.db, 'users', user.uid), toUserProfile(user), { merge: true });
+}
+
+export async function setUserOnlineStatus(user, onlineStatus) {
+  const firebase = ensureFirebase();
+  if (!firebase || !user?.uid) return;
+  await setDoc(doc(firebase.db, 'users', user.uid), {
+    uid: user.uid,
+    email: user.email ?? '',
+    onlineStatus,
+    isOnline: onlineStatus === 'online',
+    lastSeenAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  }, { merge: true });
 }
 
 export function subscribeAuthenticatedUsers(onUsers, onError) {
@@ -99,6 +131,7 @@ export function subscribeAuthenticatedUsers(onUsers, onError) {
     (snapshot) => {
       const users = snapshot.docs
         .map((item) => ({ uid: item.id, ...item.data() }))
+        .filter((user) => user.uid && user.email && user.onlineStatus === 'online')
         .sort((first, second) => {
           const firstName = first.displayName || first.email || '';
           const secondName = second.displayName || second.email || '';

@@ -22,6 +22,27 @@ service cloud.firestore {
         request.resource.data.participants.hasAny([request.auth.uid]);
     }
 
+    function validUserProfile(uid) {
+      return userOwnsProfile(uid)
+        && request.resource.data.keys().hasOnly([
+          'uid',
+          'email',
+          'displayName',
+          'photoURL',
+          'lastLoginAt',
+          'lastSeenAt',
+          'onlineStatus',
+          'isOnline',
+          'updatedAt'
+        ])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.displayName is string
+        && request.resource.data.photoURL is string
+        && request.resource.data.onlineStatus in ['online', 'offline']
+        && request.resource.data.isOnline is bool;
+    }
+
     function validSenderIdentity() {
       return request.resource.data.senderUid == request.auth.uid &&
         request.resource.data.senderEmail == request.auth.token.email &&
@@ -41,9 +62,7 @@ service cloud.firestore {
 
     match /users/{uid} {
       allow read: if signedIn();
-      allow create, update: if userOwnsProfile(uid)
-        && request.resource.data.uid == request.auth.uid
-        && request.resource.data.email == request.auth.token.email;
+      allow create, update: if validUserProfile(uid);
       allow delete: if false;
     }
 

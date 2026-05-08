@@ -8,8 +8,14 @@ test('Firebase Google auth gates chat access and removes manual new-chat registr
   const config = readFileSync(new URL('../src/firebase-config.js', import.meta.url), 'utf8');
 
   assert.match(auth, /GoogleAuthProvider/);
+  assert.match(auth, /browserLocalPersistence/);
+  assert.match(auth, /setPersistence\(firebase\.auth, browserLocalPersistence\)/);
   assert.match(auth, /signInWithPopup/);
   assert.match(auth, /collection\(db, 'users'\)/);
+  assert.match(auth, /lastLoginAt: serverTimestamp\(\)/);
+  assert.match(auth, /onlineStatus: 'online'/);
+  assert.match(auth, /user\.onlineStatus === 'online'/);
+  assert.match(auth, /setUserOnlineStatus/);
   assert.match(auth, /senderUid: user\.uid/);
   assert.match(auth, /senderEmail: user\.email/);
   assert.match(auth, /senderDisplayName:/);
@@ -28,6 +34,8 @@ test('Firestore rules require auth uid and sender identity to match request auth
 
   assert.match(rules, /request\.auth != null/);
   assert.match(rules, /request\.auth\.uid == uid/);
+  assert.match(rules, /validUserProfile\(uid\)/);
+  assert.match(rules, /onlineStatus in \['online', 'offline'\]/);
   assert.match(rules, /senderUid == request\.auth\.uid/);
   assert.match(rules, /senderEmail == request\.auth\.token\.email/);
   assert.match(rules, /participants\.hasAny\(\[request\.auth\.uid\]\)/);
