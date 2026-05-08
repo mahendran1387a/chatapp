@@ -131,22 +131,13 @@ test('sends a message to the active contact without an automatic reply', () => {
   assert.equal(messages.at(-1).senderDisplayName, 'Aisha Google');
 });
 
-test('switches between chat and status sections', () => {
+test('kids-safe mode blocks status, channels, communities, and business sections', () => {
   const state = createInitialState();
-  const updated = switchSection(state, 'status');
 
-  assert.equal(updated.activeSection, 'status');
-  assert.deepEqual(updated.statuses.recent, []);
-  assert.deepEqual(updated.statuses.viewed, []);
-});
-
-test('includes discoverable channels and switches to channels section', () => {
-  const state = createInitialState();
-  const updated = switchSection(state, 'channels');
-
-  assert.equal(updated.activeSection, 'channels');
-  assert.equal(updated.channels[0].name, 'UAE News');
-  assert.ok(updated.channels.every((channel) => channel.followers.endsWith('followers')));
+  assert.equal(switchSection(state, 'status').activeSection, 'chats');
+  assert.equal(switchSection(state, 'channels').activeSection, 'chats');
+  assert.equal(switchSection(state, 'communities').activeSection, 'chats');
+  assert.equal(switchSection(state, 'business').activeSection, 'chats');
 });
 
 test('toggles channel follow state', () => {
@@ -157,20 +148,6 @@ test('toggles channel follow state', () => {
   assert.equal(channel.following, true);
 });
 
-test('switches to communities section', () => {
-  const state = createInitialState();
-  const updated = switchSection(state, 'communities');
-
-  assert.equal(updated.activeSection, 'communities');
-});
-
-test('switches to business tools section', () => {
-  const state = createInitialState();
-  const updated = switchSection(state, 'business');
-
-  assert.equal(updated.activeSection, 'business');
-});
-
 test('switches to settings section', () => {
   const state = createInitialState();
   const updated = switchSection(state, 'settings');
@@ -178,12 +155,12 @@ test('switches to settings section', () => {
   assert.equal(updated.activeSection, 'settings');
 });
 
-test('returns detail content for inactive-looking buttons', () => {
+test('disabled privacy-risk buttons return kids-safe detail content', () => {
   const view = getActionView('catalog');
 
-  assert.equal(view.title, 'Catalog');
-  assert.match(view.body, /products and services/i);
-  assert.equal(view.primaryAction, 'Add item');
+  assert.equal(view.title, 'Kids-safe mode');
+  assert.match(view.body, /text chat, group chat, and voice calls/i);
+  assert.equal(view.primaryAction, 'OK');
 });
 
 test('returns nested settings page options', () => {
@@ -236,11 +213,11 @@ test('uses AM profile identity in settings and bundled Android app', () => {
   }
 });
 
-test('business profile action includes editable username and password fields', () => {
+test('business profile action is disabled in kids-safe mode', () => {
   const view = getActionView('businessProfile');
 
-  assert.ok(view.fields.some((field) => field.name === 'Username'));
-  assert.ok(view.fields.some((field) => field.name === 'Password' && field.type === 'password'));
+  assert.equal(view.title, 'Kids-safe mode');
+  assert.equal(view.fields, undefined);
 });
 
 test('creates a new chat from a friend name, phone number, and Gmail', () => {
@@ -419,51 +396,26 @@ test('chat menu action exposes WhatsApp-style menu items', () => {
   assert.ok(view.menuItems.some((item) => item.label === 'Delete chat' && item.danger));
 });
 
-test('discover channels action exposes a browse list', () => {
-  const view = getActionView('discoverChannels');
-
-  assert.ok(view.discoverItems.some((item) => item.name === 'Dubai Foodies'));
-  assert.ok(view.discoverItems.every((item) => item.category));
-});
-
-test('create channel action exposes a channel creation form', () => {
-  const view = getActionView('createChannel');
-
-  assert.equal(view.form, 'createChannel');
-  assert.ok(view.fields.some((field) => field.name === 'Channel name'));
-  assert.ok(view.fields.some((field) => field.name === 'Description'));
-});
-
-test('add channel plus action opens the same channel creation form', () => {
-  const view = getActionView('addChannel');
-
-  assert.equal(view.form, 'createChannel');
-  assert.ok(view.fields.some((field) => field.name === 'Channel name'));
-});
-
-test('add status action exposes a status composer form', () => {
-  const view = getActionView('addStatus');
-
-  assert.equal(view.form, 'createStatus');
-  assert.ok(view.fields.some((field) => field.name === 'Status text'));
-});
-
-test('example communities action exposes community cards', () => {
-  const view = getActionView('exampleCommunities');
-
-  assert.ok(view.communityExamples.some((item) => item.name === 'School community'));
-  assert.ok(view.communityExamples.every((item) => item.groups));
-});
-
-test('business tool actions expose real forms or lists', () => {
-  const catalog = getActionView('catalog');
-  const quickReplies = getActionView('quickReplies');
-  const labels = getActionView('labels');
-
-  assert.equal(catalog.form, 'catalogItem');
-  assert.ok(catalog.fields.some((field) => field.name === 'Item name'));
-  assert.equal(quickReplies.form, 'quickReply');
-  assert.ok(labels.listItems.some((item) => item.name === 'New customer'));
+test('media and sharing actions are disabled in kids-safe mode', () => {
+  for (const actionId of [
+    'discoverChannels',
+    'createChannel',
+    'addChannel',
+    'addStatus',
+    'exampleCommunities',
+    'catalog',
+    'quickReplies',
+    'labels',
+    'attach'
+  ]) {
+    const view = getActionView(actionId);
+    assert.equal(view.title, 'Kids-safe mode');
+    assert.equal(view.form, undefined);
+    assert.equal(view.fields, undefined);
+    assert.equal(view.discoverItems, undefined);
+    assert.equal(view.communityExamples, undefined);
+    assert.equal(view.listItems, undefined);
+  }
 });
 
 test('settings option rows expose specific choices', () => {

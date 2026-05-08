@@ -309,32 +309,8 @@ function renderDetailView(view, type = 'action') {
     renderAuthenticatedUserList(view);
     return;
   }
-  if (view.form === 'createChannel') {
-    renderCreateChannelForm(view);
-    return;
-  }
-  if (view.form === 'createStatus') {
-    renderCreateStatusForm(view);
-    return;
-  }
-  if (view.discoverItems) {
-    renderDiscoverChannelsView(view);
-    return;
-  }
-  if (view.listItems) {
-    renderBusinessListView(view);
-    return;
-  }
-  if (view.communityExamples) {
-    renderCommunityExamplesView(view);
-    return;
-  }
   if (view.menuItems) {
     renderMenuView(view);
-    return;
-  }
-  if (view.fields) {
-    renderBusinessProfileForm(view);
     return;
   }
   const iconClass = type === 'settings' ? 'settings-illustration' : 'detail-illustration';
@@ -362,7 +338,7 @@ function renderLoggedOutState() {
   `;
 }
 
-function renderBusinessListView(view) {
+function disabledListView(view) {
   emptyState.classList.remove('hidden');
   conversation.classList.add('hidden');
   emptyState.innerHTML = `
@@ -389,7 +365,7 @@ function renderBusinessListView(view) {
   `;
 }
 
-function renderCreateStatusForm(view) {
+function disabledStatusComposer(view) {
   emptyState.classList.remove('hidden');
   conversation.classList.add('hidden');
   emptyState.innerHTML = `
@@ -415,7 +391,7 @@ function renderCreateStatusForm(view) {
   `;
 }
 
-function renderCommunityExamplesView(view) {
+function disabledCommunityExamples(view) {
   emptyState.classList.remove('hidden');
   conversation.classList.add('hidden');
   emptyState.innerHTML = `
@@ -443,7 +419,7 @@ function renderCommunityExamplesView(view) {
   `;
 }
 
-function renderDiscoverChannelsView(view) {
+function disabledDiscoverView(view) {
   emptyState.classList.remove('hidden');
   conversation.classList.add('hidden');
   emptyState.innerHTML = `
@@ -470,7 +446,7 @@ function renderDiscoverChannelsView(view) {
   `;
 }
 
-function renderCreateChannelForm(view) {
+function disabledChannelComposer(view) {
   emptyState.classList.remove('hidden');
   conversation.classList.add('hidden');
   emptyState.innerHTML = `
@@ -544,7 +520,7 @@ function renderAuthenticatedUserList(view) {
   `;
 }
 
-function renderBusinessProfileForm(view) {
+function disabledProfileForm(view) {
   emptyState.classList.remove('hidden');
   conversation.classList.add('hidden');
   const formTitle = view.form ? view.form : 'businessProfileForm';
@@ -645,7 +621,7 @@ function renderProfileSettingsPage(page) {
 }
 
 function renderSettingsSearchResult(row) {
-  const navigation = row.section ? `data-jump-section="${row.section}"` : `data-settings-page="${row.page}"`;
+  const navigation = `data-settings-page="${row.page}"`;
   return `
     <button class="settings-row settings-search-result" ${navigation}>
       <span class="line-icon chats-icon"></span>
@@ -660,7 +636,7 @@ function renderSettingsSearchResults() {
     return `
       <div class="settings-search-results empty-results">
         <h2>No settings found</h2>
-        <p>Try searching for chats, privacy, account, notifications, or business tools.</p>
+        <p>Try searching for chats, account, notifications, or logout.</p>
       </div>
     `;
   }
@@ -682,44 +658,25 @@ function renderSettingsScrollableContent() {
   return `
       <div class="settings-notice" data-action="chooseNotifications">
         <span class="line-icon bulb-icon"></span>
-        <span><strong>Choose your notifications</strong><small>Get notifications for messages, groups or your status. <b>Choose now</b></small></span>
+        <span><strong>Choose your notifications</strong><small>Get notifications for chats, groups, and calls. <b>Choose now</b></small></span>
         <button data-settings-dismiss aria-label="Dismiss settings notice">x</button>
       </div>
-      <button class="profile-row" data-settings-page="profile">
-        <span class="profile-photo">AM</span>
+      <button class="profile-row" data-auth-logout>
+        <span class="profile-photo">${escapeHtml(getUserAvatar(currentAuthUser))}</span>
+        <strong>${escapeHtml(getUserName(currentAuthUser))}</strong>
       </button>
       <div class="settings-list">
-        <button class="settings-row" data-jump-section="business">
-          <span class="line-icon store-icon"></span>
-          <span><strong>Business tools</strong><small>Quick replies, labels, catalog</small></span>
-        </button>
         <button class="settings-row active" data-settings-page="account">
           <span class="line-icon key-icon"></span>
-          <span><strong>Account</strong><small>Security notifications, account info</small></span>
-        </button>
-        <button class="settings-row" data-settings-page="privacy">
-          <span class="line-icon lock-icon"></span>
-          <span><strong>Privacy</strong><small>Blocked contacts, disappearing messages</small></span>
+          <span><strong>Account</strong><small>Google login keeps names real</small></span>
         </button>
         <button class="settings-row" data-settings-page="chatsSettings">
           <span class="line-icon chats-icon"></span>
-          <span><strong>Chats</strong><small>Theme, wallpaper, chat settings</small></span>
+          <span><strong>Chats</strong><small>Text chat, groups, read ticks</small></span>
         </button>
         <button class="settings-row" data-settings-page="notificationsSettings">
           <span class="line-icon bell-icon"></span>
-          <span><strong>Notifications</strong><small>Messages, groups, sounds</small></span>
-        </button>
-        <button class="settings-row" data-settings-page="keyboardShortcuts">
-          <span class="line-icon keyboard-icon"></span>
-          <span><strong>Keyboard shortcuts</strong><small>Quick actions</small></span>
-        </button>
-        <button class="settings-row" data-settings-page="help">
-          <span class="line-icon help-icon"></span>
-          <span><strong>Help and feedback</strong><small>Help center, contact us, privacy policy</small></span>
-        </button>
-        <button class="settings-row logout-row" data-settings-page="logout">
-          <span class="line-icon logout-icon"></span>
-          <span><strong>Log out</strong></span>
+          <span><strong>Notifications</strong><small>Messages, groups, and voice calls</small></span>
         </button>
         <button class="settings-row logout-row" data-auth-logout>
           <span class="line-icon logout-icon"></span>
@@ -801,8 +758,7 @@ function renderConversation() {
         <small>online</small>
       </span>
       <span class="conversation-actions">
-        <button title="Search" aria-label="Search chat" data-action="chatSearch">Search</button>
-        <button title="Menu" aria-label="Chat menu" data-action="chatMenu">...</button>
+        <button title="Voice call" aria-label="Voice call" data-action="voiceCall">Call</button>
       </span>
     </header>
     <div class="messages" id="messages">
@@ -814,11 +770,16 @@ function renderConversation() {
                 ? 'out'
                 : 'in'
               : message.direction;
+            const readBy = Array.isArray(message.readBy) ? message.readBy : [];
+            const isRead = direction === 'out' && Boolean(contact.uid && readBy.includes(contact.uid));
+            const status = direction === 'out'
+              ? `<span class="message-status ${isRead ? 'read' : 'sent'}" title="${isRead ? 'Read' : 'Sent'}">${isRead ? '✓✓' : '✓'}</span>`
+              : '';
             return `
               <div class="bubble ${direction} ${message.deleted ? 'deleted' : ''}" data-message-id="${message.id}" data-contact-id="${contact.id}">
                 ${message.senderDisplayName ? `<strong class="sender-label">${escapeHtml(message.senderDisplayName)}</strong>` : ''}
                 ${message.deleted ? 'This message was deleted' : escapeHtml(message.text)}
-                <time>${message.time}</time>
+                <time>${status}${message.time}</time>
               </div>
             `;
           }
@@ -826,7 +787,6 @@ function renderConversation() {
         .join('')}
     </div>
     <form class="composer" id="composer">
-      <button type="button" title="Attach" aria-label="Attach" data-action="attach">+</button>
       <textarea id="messageInput" rows="1" autocomplete="off" placeholder="Type a message" spellcheck="true"></textarea>
       <button type="submit" title="Send" aria-label="Send">➤</button>
     </form>
@@ -879,11 +839,13 @@ function renderConversation() {
 }
 
 function renderStatuses() {
+  if (!recentStatuses || !viewedStatuses) return;
   recentStatuses.innerHTML = state.statuses.recent.map(renderStatusItem).join('');
   viewedStatuses.innerHTML = state.statuses.viewed.map(renderStatusItem).join('');
 }
 
 function renderChannels() {
+  if (!channelList) return;
   channelList.innerHTML = state.channels
     .map(
       (channel) => `
@@ -916,6 +878,9 @@ function renderStatusItem(status) {
 }
 
 function renderSection() {
+  if (!['chats', 'settings'].includes(state.activeSection)) {
+    state = switchSection(state, 'chats');
+  }
   document.body.classList.toggle(
     'mobile-conversation-open',
     state.activeSection === 'chats' && mobileConversationOpen && !activeAction
@@ -939,38 +904,7 @@ function renderSection() {
     return;
   }
 
-  if (state.activeSection === 'status') {
-    conversation.classList.add('hidden');
-    emptyState.classList.remove('hidden');
-    emptyState.innerHTML = `
-      <div class="status-illustration"></div>
-      <h2>Share status updates</h2>
-      <p>Share photos, videos and text that disappear after 24 hours.</p>
-      <small>Your status updates are end-to-end encrypted</small>
-    `;
-  } else if (state.activeSection === 'channels') {
-    emptyState.classList.remove('hidden');
-    emptyState.innerHTML = `
-      <div class="channels-illustration"></div>
-      <h2>Discover channels</h2>
-      <p>Entertainment, sports, news, lifestyle, people and more. Follow the channels<br>that interest you</p>
-    `;
-  } else if (state.activeSection === 'communities') {
-    emptyState.classList.remove('hidden');
-    emptyState.innerHTML = `
-      <div class="communities-illustration"></div>
-      <h2>Create communities</h2>
-      <p>Bring members together in topic-based groups and easily send them admin<br>announcements.</p>
-      <small>Your personal messages in communities are end-to-end encrypted</small>
-    `;
-  } else if (state.activeSection === 'business') {
-    emptyState.classList.remove('hidden');
-    emptyState.innerHTML = `
-      <div class="channels-illustration"></div>
-      <h2>Discover channels</h2>
-      <p>Entertainment, sports, news, lifestyle, people and more. Follow the channels<br>that interest you</p>
-    `;
-  } else if (state.activeSection === 'settings') {
+  if (state.activeSection === 'settings') {
     emptyState.classList.remove('hidden');
     emptyState.innerHTML = `
       <div class="settings-illustration"></div>
@@ -1031,8 +965,6 @@ function renderAll() {
   renderSettingsPanel();
   renderSection();
   renderChats();
-  renderStatuses();
-  renderChannels();
   if (state.activeSection === 'chats' && !activeAction) {
     renderConversation();
     subscribeActiveConversation();
@@ -1460,7 +1392,7 @@ document.querySelectorAll('[data-notice]').forEach((notice) => {
   notice.querySelector('button').addEventListener('click', () => notice.remove());
 });
 
-channelList.addEventListener('click', (event) => {
+channelList?.addEventListener('click', (event) => {
   const button = event.target.closest('[data-channel-id]');
   if (!button) return;
   state = toggleChannelFollow(state, button.dataset.channelId);

@@ -26,7 +26,17 @@ service cloud.firestore {
       return request.resource.data.senderUid == request.auth.uid &&
         request.resource.data.senderEmail == request.auth.token.email &&
         request.resource.data.senderDisplayName is string &&
-        request.resource.data.text is string;
+        request.resource.data.text is string &&
+        request.resource.data.readBy is list &&
+        request.resource.data.readBy.hasOnly([request.auth.uid]);
+    }
+
+    function validReadReceiptUpdate() {
+      return signedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBy'])
+        && request.resource.data.readBy is list
+        && (!('readBy' in resource.data) || request.resource.data.readBy.hasAll(resource.data.readBy))
+        && request.resource.data.readBy.hasAny([request.auth.uid]);
     }
 
     match /users/{uid} {
@@ -49,10 +59,7 @@ service cloud.firestore {
         allow create: if signedIn()
           && validSenderIdentity()
           && request.resource.data.participants.hasAny([request.auth.uid]);
-        allow update: if signedIn()
-          && resource.data.senderUid == request.auth.uid
-          && request.resource.data.senderUid == resource.data.senderUid
-          && request.resource.data.senderEmail == resource.data.senderEmail;
+        allow update: if validReadReceiptUpdate();
         allow delete: if false;
       }
     }

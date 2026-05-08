@@ -90,17 +90,20 @@ const actionViews = {
   },
   chatMenu: {
     title: 'Chat menu',
-    body: 'Quick actions for your chat list.',
+    body: 'Kid-safe actions for your chat list.',
     primaryAction: 'Open menu',
-    points: ['Archived chats', 'Starred messages', 'Settings'],
+    points: ['Verified friends', 'Groups', 'Settings'],
     menuItems: [
-      { label: 'Contact info', detail: 'View phone number and profile details' },
-      { label: 'Select messages', detail: 'Choose messages to forward or delete' },
+      { label: 'Contact info', detail: 'View verified Google profile' },
       { label: 'Mute notifications', detail: 'Silence this chat' },
-      { label: 'Disappearing messages', detail: 'Set messages to disappear' },
-      { label: 'Clear chat', detail: 'Remove all messages from this chat' },
       { label: 'Delete chat', detail: 'Delete this conversation', danger: true }
     ]
+  },
+  voiceCall: {
+    title: 'Voice call',
+    body: 'Start a voice call with this signed-in friend. Video and sharing are turned off.',
+    primaryAction: 'Start voice call',
+    points: ['Voice only', 'Signed-in users', 'Kid-safe chat']
   },
   chatSearch: {
     title: 'Search chat',
@@ -312,6 +315,26 @@ const actionViews = {
     points: ['Demo session', 'No account data stored', 'Safe to continue']
   }
 };
+
+const disabledForKidsActionIds = new Set([
+  'addStatus',
+  'myStatus',
+  'addChannel',
+  'createChannel',
+  'discoverChannels',
+  'exampleCommunities',
+  'businessProfile',
+  'catalog',
+  'orders',
+  'advertise',
+  'quickReplies',
+  'labels',
+  'broadcastAudience',
+  'attach',
+  'chatSearch'
+]);
+
+const allowedSections = new Set(['chats', 'settings']);
 
 const settingsPages = {
   profile: {
@@ -641,6 +664,14 @@ export function createInitialState(savedState = {}) {
 }
 
 export function getActionView(actionId) {
+  if (disabledForKidsActionIds.has(actionId)) {
+    return {
+      title: 'Kids-safe mode',
+      body: 'This app only allows text chat, group chat, and voice calls between signed-in users.',
+      primaryAction: 'OK',
+      points: ['Text only', 'Voice calls', 'Google names']
+    };
+  }
   return actionViews[actionId] ?? {
     title: 'Coming soon',
     body: 'This demo button is ready for the next feature.',
@@ -708,6 +739,14 @@ export function selectContact(state, contactId) {
     contacts: state.contacts.map((contact) =>
       contact.id === contactId ? { ...contact, unread: 0 } : contact
     )
+  };
+}
+
+export function switchSection(state, section) {
+  const safeSection = allowedSections.has(section) ? section : 'chats';
+  return {
+    ...state,
+    activeSection: safeSection
   };
 }
 
@@ -873,13 +912,6 @@ export function deleteMessage(state, contactId, messageId) {
   };
 }
 
-export function switchSection(state, section) {
-  return {
-    ...state,
-    activeSection: section
-  };
-}
-
 export function toggleChannelFollow(state, channelId) {
   return {
     ...state,
@@ -922,6 +954,7 @@ export function sendMessage(
         senderEmail,
         senderDisplayName,
         senderPhotoURL,
+        readBy: senderUid ? [senderUid] : [],
         timestamp
       };
       return {

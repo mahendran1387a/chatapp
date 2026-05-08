@@ -8,6 +8,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js';
 import {
   addDoc,
+  arrayUnion,
   collection,
   doc,
   getFirestore,
@@ -15,7 +16,8 @@ import {
   orderBy,
   query,
   serverTimestamp,
-  setDoc
+  setDoc,
+  updateDoc
 } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
 
 import { firebaseConfig, isFirebaseConfigured } from './firebase-config.js';
@@ -118,6 +120,7 @@ export async function sendFirebaseMessage(contactUid, text, user) {
     senderDisplayName: user.displayName ?? user.email ?? 'Google user',
     senderPhotoURL: user.photoURL ?? '',
     participants: [user.uid, contactUid],
+    readBy: [user.uid],
     timestamp: serverTimestamp()
   };
 
@@ -140,8 +143,12 @@ export function subscribeConversationMessages(currentUid, contactUid, onMessages
   return onSnapshot(
     query(collection(firebase.db, 'conversations', conversationId, 'messages'), orderBy('timestamp')),
     (snapshot) => {
-      onMessages(snapshot.docs.map((item) => {
+      const messages = snapshot.docs.map((item) => {
         const data = item.data();
+        const readBy = Array.isArray(data.readBy) ? data.readBy : [];
+        if (data.senderUid !== currentUid && !readBy.includes(currentUid)) {
+          updateDoc(item.ref, { readBy: arrayUnion(currentUid) }).catch((error) => onError?.(error));
+        }
         return {
           id: item.id,
           text: data.text,
@@ -150,11 +157,14 @@ export function subscribeConversationMessages(currentUid, contactUid, onMessages
           senderEmail: data.senderEmail,
           senderDisplayName: data.senderDisplayName,
           senderPhotoURL: data.senderPhotoURL,
+          readBy,
+          read: readBy.includes(contactUid),
           timestamp: data.timestamp?.toMillis?.() ?? Date.now(),
           time: data.timestamp?.toDate?.().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) ?? 'Now',
           deleted: data.deleted === true
         };
-      }));
+      });
+      onMessages(messages);
     },
     (error) => onError?.(error)
   );
