@@ -381,6 +381,8 @@ test('new chat flow uses authenticated Google users instead of typed names', () 
     assert.match(contents, /authenticatedUsers\.filter/);
     assert.match(contents, /createAuthenticatedContact\(state, selectedUser\)/);
     assert.match(contents, /Find friend by Gmail/);
+    assert.match(contents, /Searching/);
+    assert.match(contents, /!friendSearchQuery\.trim\(\)/);
     assert.match(contents, /Friend not found\. Ask them to sign in first\./);
     assert.doesNotMatch(contents, /id="newChatForm"/);
     assert.match(contents, /function getContactEmail\(contact\)/);

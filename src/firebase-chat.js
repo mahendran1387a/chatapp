@@ -19,8 +19,7 @@ import {
   query,
   serverTimestamp,
   setDoc,
-  updateDoc,
-  where
+  updateDoc
 } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
 
 import { firebaseConfig, isFirebaseConfigured } from './firebase-config.js';
@@ -176,9 +175,13 @@ export function subscribeUserByEmail(email, onUsers, onError) {
   }
 
   return onSnapshot(
-    query(collection(firebase.db, 'users'), where('email', '==', normalizeEmail(email))),
+    collection(firebase.db, 'users'),
     (snapshot) => {
-      const users = dedupeGoogleUsers(snapshot.docs.map((item) => ({ uid: item.id, ...item.data() })));
+      const users = dedupeGoogleUsers(
+        snapshot.docs
+          .map((item) => ({ uid: item.id, ...item.data() }))
+          .filter((user) => normalizeEmail(user.email) === normalizedEmail)
+      );
       onUsers(users);
     },
     (error) => onError?.(error)

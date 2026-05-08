@@ -166,6 +166,7 @@ let authReady = false;
 let authError = '';
 let authenticatedUsers = [];
 let friendSearchResults = [];
+let friendSearchStatus = 'idle';
 let unsubscribeUsers = () => {};
 let unsubscribeFriendSearch = () => {};
 let unsubscribeConversation = () => {};
@@ -534,6 +535,7 @@ function renderAuthenticatedUserRows(emptyMessage) {
 function renderFriendSearchRows() {
   const query = friendSearchQuery.trim();
   if (!query) return '<p class="empty-copy">Type your friend Gmail to find them.</p>';
+  if (friendSearchStatus === 'loading') return '<p class="empty-copy">Searching...</p>';
   const users = friendSearchResults.filter((user) => user.uid !== currentAuthUser?.uid);
   if (!users.length) return '<p class="empty-copy">Friend not found. Ask them to sign in first.</p>';
   return users.map((user) => `
@@ -559,9 +561,9 @@ function renderAuthenticatedUserList(view) {
       <div class="auth-user-list friend-search-results">
         ${renderFriendSearchRows()}
       </div>
-      <div class="auth-user-list">
-        ${renderAuthenticatedUserRows('No Google signed-in users were found yet. Ask your friend to sign in once, then they will appear here automatically.')}
-      </div>
+      ${!friendSearchQuery.trim()
+        ? `<div class="auth-user-list">${renderAuthenticatedUserRows('No Google signed-in users were found yet. Ask your friend to sign in once, then they will appear here automatically.')}</div>`
+        : ''}
     </div>
   `;
 }
@@ -1324,9 +1326,9 @@ function showActionDialog(view) {
           <div class="auth-user-list friend-search-results">
             ${renderFriendSearchRows()}
           </div>
-          <div class="auth-user-list">
-            ${renderAuthenticatedUserRows('No Google signed-in users were found yet.')}
-          </div>
+          ${!friendSearchQuery.trim()
+            ? `<div class="auth-user-list">${renderAuthenticatedUserRows('No Google signed-in users were found yet.')}</div>`
+            : ''}
         </div>
       </section>
     `;
@@ -1680,6 +1682,7 @@ document.addEventListener('input', (event) => {
   if (friendSearchInput) {
     friendSearchQuery = friendSearchInput.value;
     friendSearchResults = [];
+    friendSearchStatus = friendSearchQuery.trim() ? 'loading' : 'idle';
     unsubscribeFriendSearch();
     const results = document.querySelector('.friend-search-results');
     if (!friendSearchQuery.trim()) {
@@ -1690,6 +1693,7 @@ document.addEventListener('input', (event) => {
       friendSearchQuery,
       (users) => {
         friendSearchResults = users;
+        friendSearchStatus = 'done';
         const nextResults = document.querySelector('.friend-search-results');
         if (nextResults) nextResults.innerHTML = renderFriendSearchRows();
       },
@@ -1852,6 +1856,7 @@ function startFirebaseAuth() {
       if (!user) {
         authenticatedUsers = [];
         friendSearchResults = [];
+        friendSearchStatus = 'idle';
         renderAll();
         return;
       }
