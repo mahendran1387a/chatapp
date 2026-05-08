@@ -95,9 +95,16 @@ export function subscribeAuthenticatedUsers(onUsers, onError) {
   const { db } = firebase;
 
   return onSnapshot(
-    query(collection(db, 'users'), orderBy('displayName')),
+    collection(db, 'users'),
     (snapshot) => {
-      onUsers(snapshot.docs.map((item) => ({ uid: item.id, ...item.data() })));
+      const users = snapshot.docs
+        .map((item) => ({ uid: item.id, ...item.data() }))
+        .sort((first, second) => {
+          const firstName = first.displayName || first.email || '';
+          const secondName = second.displayName || second.email || '';
+          return firstName.localeCompare(secondName);
+        });
+      onUsers(users);
     },
     (error) => onError?.(error)
   );
@@ -110,7 +117,10 @@ export function getConversationId(firstUid, secondUid) {
 export async function sendFirebaseMessage(contactUid, text, user) {
   const firebase = ensureFirebase();
   const cleanText = text.trim();
-  if (!firebase || !cleanText || !user?.uid || !contactUid) return null;
+  if (!firebase) throw new Error('Firebase is not ready yet.');
+  if (!user?.uid) throw new Error('Please sign in again before chatting.');
+  if (!contactUid) throw new Error('Choose a signed-in friend first.');
+  if (!cleanText) return null;
 
   const conversationId = getConversationId(user.uid, contactUid);
   const payload = {
