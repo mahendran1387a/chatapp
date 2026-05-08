@@ -15,6 +15,8 @@ test('Firebase Google auth gates chat access and removes manual new-chat registr
   assert.match(auth, /signInWithPopup/);
   assert.match(auth, /prompt: 'select_account'/);
   assert.match(auth, /signOut\(firebase\.auth\)/);
+  assert.match(auth, /where\('email', '==', normalizeEmail\(email\)\)/);
+  assert.match(auth, /subscribeUserByEmail/);
   assert.match(auth, /collection\(db, 'users'\)/);
   assert.match(auth, /lastLoginAt: serverTimestamp\(\)/);
   assert.match(auth, /onlineStatus: 'online'/);
@@ -30,6 +32,9 @@ test('Firebase Google auth gates chat access and removes manual new-chat registr
   assert.match(app, /currentAuthUser\?\.email/);
   assert.match(app, /currentAuthUser/);
   assert.match(app, /createAuthenticatedContact/);
+  assert.match(app, /friendSearchQuery/);
+  assert.match(app, /Friend not found\. Ask them to sign in first\./);
+  assert.match(app, /subscribeUserByEmail/);
   assert.match(app, /reconcileAuthenticatedContacts/);
   assert.doesNotMatch(app, /placeholder="Aisha Friend"/);
   assert.match(config, /apiKey: 'AIzaSyCTwbG9VfUstguvtiEhCLWLiO2U1SZFoGM'/);

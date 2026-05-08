@@ -26,6 +26,7 @@ import {
   signInWithGoogle,
   startAuthListener,
   subscribeAuthenticatedUsers,
+  subscribeUserByEmail,
   subscribeConversationMessages
 } from './firebase-chat.js';
 
@@ -164,10 +165,13 @@ let currentAuthUser = null;
 let authReady = false;
 let authError = '';
 let authenticatedUsers = [];
+let friendSearchResults = [];
 let unsubscribeUsers = () => {};
+let unsubscribeFriendSearch = () => {};
 let unsubscribeConversation = () => {};
 let subscribedConversationContactId = '';
 let settingsSearchQuery = '';
+let friendSearchQuery = '';
 let isLoggedOut = false;
 let mobileConversationOpen = false;
 const settingSwitches = new Map();
@@ -527,6 +531,19 @@ function renderAuthenticatedUserRows(emptyMessage) {
     : `<p class="empty-copy">${emptyMessage}</p>`;
 }
 
+function renderFriendSearchRows() {
+  const query = friendSearchQuery.trim();
+  if (!query) return '<p class="empty-copy">Type your friend Gmail to find them.</p>';
+  const users = friendSearchResults.filter((user) => user.uid !== currentAuthUser?.uid);
+  if (!users.length) return '<p class="empty-copy">Friend not found. Ask them to sign in first.</p>';
+  return users.map((user) => `
+    <button class="auth-user-row" type="button" data-auth-user-id="${user.uid}">
+      ${renderUserPhoto(user, 'small')}
+      <span><strong>${escapeHtml(getUserName(user))}</strong><small>${escapeHtml(user.email ?? '')}</small></span>
+    </button>
+  `).join('');
+}
+
 function renderAuthenticatedUserList(view) {
   emptyState.classList.remove('hidden');
   conversation.classList.add('hidden');
@@ -535,6 +552,13 @@ function renderAuthenticatedUserList(view) {
       <div class="detail-illustration"></div>
       <h2>${view.title}</h2>
       <p>Choose a Google signed-in user to start a chat. Names and emails come from Google only.</p>
+      <label class="friend-search">
+        <span>Find friend by Gmail</span>
+        <input id="friendSearchInput" type="email" autocomplete="off" value="${escapeAttribute(friendSearchQuery)}" placeholder="friend@gmail.com" />
+      </label>
+      <div class="auth-user-list friend-search-results">
+        ${renderFriendSearchRows()}
+      </div>
       <div class="auth-user-list">
         ${renderAuthenticatedUserRows('No Google signed-in users were found yet. Ask your friend to sign in once, then they will appear here automatically.')}
       </div>
@@ -1293,6 +1317,13 @@ function showActionDialog(view) {
           <div class="detail-illustration"></div>
           <h2>${view.title}</h2>
           <p>Choose a Google signed-in user to start a chat.</p>
+          <label class="friend-search">
+            <span>Find friend by Gmail</span>
+            <input id="friendSearchInput" type="email" autocomplete="off" value="${escapeAttribute(friendSearchQuery)}" placeholder="friend@gmail.com" />
+          </label>
+          <div class="auth-user-list friend-search-results">
+            ${renderFriendSearchRows()}
+          </div>
           <div class="auth-user-list">
             ${renderAuthenticatedUserRows('No Google signed-in users were found yet.')}
           </div>
@@ -1450,7 +1481,7 @@ document.addEventListener('click', (event) => {
 
   const authUserButton = event.target.closest('[data-auth-user-id]');
   if (authUserButton) {
-    const selectedUser = authenticatedUsers.find((user) => user.uid === authUserButton.dataset.authUserId);
+    const selectedUser = [...friendSearchResults, ...authenticatedUsers].find((user) => user.uid === authUserButton.dataset.authUserId);
     if (selectedUser) {
       activeAction = null;
       activeSettingsPage = null;
@@ -1645,6 +1676,29 @@ document.addEventListener('input', (event) => {
 });
 
 document.addEventListener('input', (event) => {
+  const friendSearchInput = event.target.closest('#friendSearchInput');
+  if (friendSearchInput) {
+    friendSearchQuery = friendSearchInput.value;
+    friendSearchResults = [];
+    unsubscribeFriendSearch();
+    const results = document.querySelector('.friend-search-results');
+    if (!friendSearchQuery.trim()) {
+      if (results) results.innerHTML = renderFriendSearchRows();
+      return;
+    }
+    unsubscribeFriendSearch = subscribeUserByEmail(
+      friendSearchQuery,
+      (users) => {
+        friendSearchResults = users;
+        const nextResults = document.querySelector('.friend-search-results');
+        if (nextResults) nextResults.innerHTML = renderFriendSearchRows();
+      },
+      (error) => showToast(error.message)
+    );
+    if (results) results.innerHTML = renderFriendSearchRows();
+    return;
+  }
+
   const newChatInput = event.target.closest('#newChatForm input[name="name"], #newChatForm input[name="phone"], #newChatForm input[name="email"]');
   if (!newChatInput) return;
 
@@ -1792,10 +1846,12 @@ function startFirebaseAuth() {
       authError = '';
       currentAuthUser = user;
       unsubscribeUsers();
+      unsubscribeFriendSearch();
       unsubscribeConversation();
       subscribedConversationContactId = '';
       if (!user) {
         authenticatedUsers = [];
+        friendSearchResults = [];
         renderAll();
         return;
       }

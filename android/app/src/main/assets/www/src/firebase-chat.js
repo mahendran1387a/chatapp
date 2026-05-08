@@ -19,7 +19,8 @@ import {
   query,
   serverTimestamp,
   setDoc,
-  updateDoc
+  updateDoc,
+  where
 } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
 
 import { firebaseConfig, isFirebaseConfigured } from './firebase-config.js';
@@ -50,6 +51,10 @@ function ensureAuthPersistence(firebase) {
     authPersistencePromise = setPersistence(firebase.auth, browserLocalPersistence);
   }
   return authPersistencePromise;
+}
+
+function normalizeEmail(email) {
+  return typeof email === 'string' ? email.trim().toLowerCase() : '';
 }
 
 export function startAuthListener(onChange, onError) {
@@ -100,7 +105,7 @@ export async function logoutGoogleUser() {
 export function toUserProfile(user) {
   return {
     uid: user.uid,
-    email: user.email ?? '',
+    email: normalizeEmail(user.email),
     displayName: user.displayName ?? user.email ?? 'Google user',
     photoURL: user.photoURL ?? '',
     lastLoginAt: serverTimestamp(),
@@ -121,7 +126,7 @@ export async function setUserOnlineStatus(user, onlineStatus) {
   if (!firebase || !user?.uid) return;
   await setDoc(doc(firebase.db, 'users', user.uid), {
     uid: user.uid,
-    email: user.email ?? '',
+    email: normalizeEmail(user.email),
     onlineStatus,
     isOnline: onlineStatus === 'online',
     lastSeenAt: serverTimestamp(),
@@ -156,6 +161,24 @@ export function subscribeAuthenticatedUsers(onUsers, onError) {
           const secondName = second.displayName || second.email || '';
           return firstName.localeCompare(secondName);
         });
+      onUsers(users);
+    },
+    (error) => onError?.(error)
+  );
+}
+
+export function subscribeUserByEmail(email, onUsers, onError) {
+  const firebase = ensureFirebase();
+  const normalizedEmail = normalizeEmail(email);
+  if (!firebase || !normalizedEmail) {
+    onUsers([]);
+    return () => {};
+  }
+
+  return onSnapshot(
+    query(collection(firebase.db, 'users'), where('email', '==', normalizeEmail(email))),
+    (snapshot) => {
+      const users = dedupeGoogleUsers(snapshot.docs.map((item) => ({ uid: item.id, ...item.data() })));
       onUsers(users);
     },
     (error) => onError?.(error)
