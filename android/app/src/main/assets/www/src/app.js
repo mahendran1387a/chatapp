@@ -199,7 +199,8 @@ function saveChatState() {
 }
 
 const currentClientId = getClientId();
-let state = createInitialState(loadSavedChatState());
+const savedInitialChatState = loadSavedChatState();
+let state = createInitialState(savedInitialChatState);
 rememberChatSnapshot();
 let currentFilter = 'all';
 let activeAction = null;
@@ -224,6 +225,7 @@ let friendSearchQuery = '';
 let currentPresenceStatus = '';
 let isLoggedOut = false;
 let mobileConversationOpen = false;
+let restoreSelectedChatOnLoad = Boolean(savedInitialChatState.activeContactId);
 const settingSwitches = new Map();
 const profileValues = loadProfileValues();
 const businessProfileValues = {
@@ -414,6 +416,23 @@ function renderLoadingChats() {
     <h2>Loading chats...</h2>
     <p>Getting your friends and messages from Firebase.</p>
     <small>This happens automatically after sign-in.</small>
+  `;
+}
+
+function hasSelectedChat() {
+  if (!currentAuthUser || !isCurrentUserApproved()) return false;
+  const contact = getActiveContact(state);
+  return Boolean(contact?.uid);
+}
+
+function renderNoChatSelected() {
+  conversation.classList.add('hidden');
+  emptyState.classList.remove('hidden');
+  emptyState.innerHTML = `
+    <div class="empty-illustration">WA</div>
+    <h2>Choose a friend to start chatting.</h2>
+    <p>Open Friends & Invites and pick an approved friend.</p>
+    <small>The message bar appears after a chat is selected.</small>
   `;
 }
 
@@ -1038,9 +1057,8 @@ function renderChats() {
 
 function renderConversation() {
   const contact = getActiveContact(state);
-  if (!contact) {
-    conversation.classList.add('hidden');
-    emptyState.classList.remove('hidden');
+  if (!contact?.uid) {
+    renderNoChatSelected();
     return;
   }
 
@@ -1306,11 +1324,15 @@ function renderAll() {
   renderSignedInUser();
   if (!authReady) return;
   if (!currentAuthUser) return;
-  if (chatsLoading) {
+  if (chatsLoading && !hasSelectedChat()) {
     renderLoadingChats();
     return;
   }
   if (renderFamilyAccessGate()) return;
+  if (restoreSelectedChatOnLoad && state.activeSection === 'chats' && hasSelectedChat()) {
+    mobileConversationOpen = true;
+    restoreSelectedChatOnLoad = false;
+  }
   renderFriendsInvitesPanel();
   renderSettingsPanel();
   renderSection();
@@ -2209,6 +2231,7 @@ function startFirebaseAuth() {
         currentUserProfile = null;
         friendSearchQuery = '';
         currentPresenceStatus = '';
+        restoreSelectedChatOnLoad = Boolean(state.activeContactId);
         chatsLoading = false;
         renderAll();
         return;

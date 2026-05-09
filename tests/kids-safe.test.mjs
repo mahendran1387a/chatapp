@@ -12,6 +12,11 @@ const appFiles = [
   '../android/app/src/main/assets/www/src/app.js'
 ];
 
+const styleFiles = [
+  '../styles.css',
+  '../android/app/src/main/assets/www/styles.css'
+];
+
 test('kids-safe shell exposes chat, friends, and settings navigation', () => {
   for (const relativePath of webFiles) {
     const contents = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
@@ -46,6 +51,33 @@ test('conversation allows text and voice call only, with no attachment/media but
     assert.doesNotMatch(contents, /renderCreateStatusForm/);
     assert.doesNotMatch(contents, /renderCreateChannelForm/);
     assert.doesNotMatch(contents, /renderBusinessProfileForm/);
+  }
+});
+
+test('chat view keeps the composer available after auth refresh when a chat is selected', () => {
+  for (const relativePath of appFiles) {
+    const contents = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
+
+    assert.match(contents, /function hasSelectedChat\(\)/);
+    assert.match(contents, /if \(chatsLoading && !hasSelectedChat\(\)\)/);
+    assert.match(contents, /let restoreSelectedChatOnLoad = Boolean\(savedInitialChatState\.activeContactId\)/);
+    assert.match(contents, /restoreSelectedChatOnLoad && state\.activeSection === 'chats' && hasSelectedChat\(\)/);
+    assert.match(contents, /function renderNoChatSelected\(\)/);
+    assert.match(contents, /Choose a friend to start chatting\./);
+    assert.match(contents, /<form class="composer" id="composer">/);
+    assert.match(contents, /data-emoji-toggle/);
+    assert.match(contents, /data-action="voiceCall"/);
+  }
+});
+
+test('chat layout keeps the message bar inside the visible screen on desktop and mobile', () => {
+  for (const relativePath of styleFiles) {
+    const contents = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
+
+    assert.match(contents, /\.content \{[\s\S]*?height: 100%;[\s\S]*?overflow: hidden;/);
+    assert.match(contents, /\.conversation \{[\s\S]*?grid-template-rows: auto minmax\(0, 1fr\) auto;[\s\S]*?overflow: hidden;/);
+    assert.match(contents, /\.messages \{[\s\S]*?min-height: 0;[\s\S]*?overflow-y: auto;/);
+    assert.match(contents, /\.composer \{[\s\S]*?position: sticky;[\s\S]*?bottom: 0;[\s\S]*?z-index: 5;/);
   }
 });
 
