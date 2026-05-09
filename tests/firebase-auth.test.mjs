@@ -18,7 +18,8 @@ test('Firebase Google auth gates chat access and removes manual new-chat registr
   assert.match(auth, /collection\(db, 'users'\)/);
   assert.match(auth, /subscribeAuthenticatedUsers/);
   assert.match(auth, /collection\(db, 'users'\)/);
-  assert.match(auth, /setDoc\(doc\(firebase\.db, 'users', user\.uid\), toUserProfile\(user\), \{ merge: true \}\)/);
+  assert.match(auth, /const userRef = doc\(firebase\.db, 'users', user\.uid\)/);
+  assert.match(auth, /await setDoc\(userRef, profile, \{ merge: true \}\)/);
   assert.match(auth, /lastLoginAt: serverTimestamp\(\)/);
   assert.match(auth, /onlineStatus: 'online'/);
   assert.match(auth, /normalizeOnlineStatus/);
@@ -46,7 +47,7 @@ test('Firebase Google auth gates chat access and removes manual new-chat registr
   assert.match(app, /id="friendSearchForm"/);
   assert.match(app, /data-friend-search-input/);
   assert.match(app, /filterAuthenticatedUsers/);
-  assert.match(app, /Everyone who signs in appears here automatically/);
+  assert.match(app, /Only approved family and friends can chat here/);
   assert.doesNotMatch(app, /data-friend-search-submit/);
   assert.doesNotMatch(app, /subscribeUserByEmail/);
   assert.doesNotMatch(app, /Press Search to find or invite this Gmail/);
@@ -62,7 +63,9 @@ test('Firestore rules require auth uid and sender identity to match request auth
 
   assert.match(rules, /request\.auth != null/);
   assert.match(rules, /request\.auth\.uid == uid/);
-  assert.match(rules, /validUserProfile\(uid\)/);
+  assert.match(rules, /validSelfProfileCreate\(uid\)/);
+  assert.match(rules, /validSelfProfileUpdate\(uid\)/);
+  assert.match(rules, /approvedUser\(request\.auth\.uid\)/);
   assert.match(rules, /onlineStatus in \['online', 'away', 'offline'\]/);
   assert.match(rules, /senderUid == request\.auth\.uid/);
   assert.match(rules, /senderEmail == request\.auth\.token\.email/);

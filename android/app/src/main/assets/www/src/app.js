@@ -20,14 +20,19 @@ import {
   updateMessage
 } from './chat-store.js';
 import {
+  approveFamilyMember,
   getFirebaseSetupStatus,
+  isFamilyOwnerEmail,
   logoutGoogleUser,
   saveUserProfile,
+  sendFamilyInvite,
   sendFirebaseMessage,
   setUserOnlineStatus,
   signInWithGoogle,
   startAuthListener,
   subscribeAuthenticatedUsers,
+  subscribeCurrentUserProfile,
+  subscribePendingFamilyUsers,
   subscribeConversationMessages
 } from './firebase-chat.js';
 
@@ -205,9 +210,14 @@ let currentAuthUser = null;
 let authReady = false;
 let authError = '';
 let authenticatedUsers = [];
+let pendingFamilyUsers = [];
+let currentUserProfile = null;
 let unsubscribeUsers = () => {};
+let unsubscribeCurrentUserProfile = () => {};
+let unsubscribePendingFamilyUsers = () => {};
 let unsubscribeConversation = () => {};
 let subscribedConversationContactId = '';
+let familyListsStarted = false;
 let settingsSearchQuery = '';
 let friendSearchQuery = '';
 let currentPresenceStatus = '';
@@ -327,6 +337,14 @@ function renderPresenceStatus(onlineStatus, extraClass = '') {
   return `<span class="presence-status ${statusClass} ${extraClass}">${getPresenceStatusLabel(statusClass)}</span>`;
 }
 
+function isCurrentUserOwner() {
+  return isFamilyOwnerEmail(currentAuthUser?.email);
+}
+
+function isCurrentUserApproved() {
+  return Boolean(currentAuthUser && (isCurrentUserOwner() || currentUserProfile?.approved === true));
+}
+
 function insertEmojiIntoMessage(input, emoji) {
   const start = input.selectionStart ?? input.value.length;
   const end = input.selectionEnd ?? start;
@@ -365,6 +383,21 @@ function renderAuthGate() {
         : '<small class="auth-error">Setup is not ready yet. Ask a parent to add the app keys.</small>'}
     </div>
   `;
+}
+
+function renderFamilyAccessGate() {
+  if (!currentAuthUser || isCurrentUserApproved()) return false;
+  appShell.classList.add('auth-locked');
+  authGate.classList.remove('hidden');
+  authGate.innerHTML = `
+    <div class="auth-card family-gate">
+      <img src="app-icon.svg" alt="" />
+      <h1>Only approved family and friends can chat here</h1>
+      <p>Ask the app owner to approve you. Your safe profile has been saved and will appear in the owner's approval list.</p>
+      <button class="google-sign-in" type="button" data-auth-logout>Log out</button>
+    </div>
+  `;
+  return true;
 }
 
 function renderSignedInUser() {
@@ -627,12 +660,47 @@ function renderFriendSearchRows(emptyMessage) {
   `;
 }
 
+function renderPendingFamilyRows() {
+  if (!isCurrentUserOwner()) return '';
+  const rows = pendingFamilyUsers.length
+    ? pendingFamilyUsers.map((user) => `
+        <button class="auth-user-row" type="button" data-approve-family-user="${escapeAttribute(user.uid)}">
+          ${renderUserPhoto(user, 'small')}
+          <span>
+            <strong>${escapeHtml(getUserName(user))}</strong>
+            <small>Waiting for approval</small>
+          </span>
+        </button>
+      `).join('')
+    : '<p class="empty-copy">No pending family approvals right now.</p>';
+  return `
+    <div class="auth-user-list pending-family-list">
+      <h3 class="user-list-heading">Approve Family</h3>
+      ${rows}
+    </div>
+  `;
+}
+
+function renderInviteFamilyForm() {
+  if (!isCurrentUserOwner()) return '';
+  return `
+    <form class="friend-search-form family-invite-form" data-family-invite-form>
+      <label class="friend-search">
+        <span>Invite Family</span>
+        <input data-family-invite-email name="email" type="email" autocomplete="off" placeholder="family@gmail.com" />
+      </label>
+      <button class="friend-search-button" type="submit">Send invite</button>
+    </form>
+  `;
+}
+
 function renderFriendSearchForm(autoListMessage) {
   return `
     <div class="invite-friend-intro">
       <h3>Find Friends</h3>
-      <p>Everyone who signs in appears here automatically.</p>
+      <p>Only approved family and friends can chat here. Search filters the approved list.</p>
     </div>
+    ${renderInviteFamilyForm()}
     <div class="friend-search-form" id="friendSearchForm">
       <label class="friend-search">
         <span>Search friends</span>
@@ -642,6 +710,7 @@ function renderFriendSearchForm(autoListMessage) {
     <div class="auth-user-list friend-search-results">
       ${renderFriendSearchRows(autoListMessage)}
     </div>
+    ${renderPendingFamilyRows()}
   `;
 }
 
@@ -652,8 +721,8 @@ function renderAuthenticatedUserList(view) {
     <div class="business-profile-form">
       <div class="detail-illustration"></div>
       <h2>${view.title}</h2>
-      <p>Pick a signed-in friend to start chatting.</p>
-      ${renderFriendSearchForm('Ask your friend to sign in once, then they will appear here automatically.')}
+      <p>Pick an approved family member or friend to start chatting.</p>
+      ${renderFriendSearchForm('No approved family yet. Use Invite Family, then approve them after they sign in.')}
     </div>
   `;
 }
@@ -1183,6 +1252,7 @@ function renderAll() {
   renderAuthGate();
   renderSignedInUser();
   if (!currentAuthUser) return;
+  if (renderFamilyAccessGate()) return;
   renderSettingsPanel();
   renderSection();
   renderChats();
@@ -1641,6 +1711,14 @@ document.addEventListener('click', (event) => {
     return;
   }
 
+  const approveFamilyButton = event.target.closest('[data-approve-family-user]');
+  if (approveFamilyButton) {
+    approveFamilyMember(approveFamilyButton.dataset.approveFamilyUser, currentAuthUser)
+      .then(() => showToast('Family member approved'))
+      .catch((error) => showToast(error.message));
+    return;
+  }
+
   const authUserButton = event.target.closest('[data-auth-user-id]');
   if (authUserButton) {
     const selectedUser = authenticatedUsers.find((user) => user.uid === authUserButton.dataset.authUserId);
@@ -1872,6 +1950,20 @@ document.addEventListener('keydown', (event) => {
 });
 
 document.addEventListener('submit', (event) => {
+  const familyInviteForm = event.target.closest('[data-family-invite-form]');
+  if (familyInviteForm) {
+    event.preventDefault();
+    const formData = new FormData(familyInviteForm);
+    const email = String(formData.get('email') ?? '');
+    sendFamilyInvite(email, currentAuthUser)
+      .then(() => {
+        familyInviteForm.reset();
+        showToast('Invite saved. Ask them to sign in once.');
+      })
+      .catch((error) => showToast(error.message));
+    return;
+  }
+
   const createStatusForm = event.target.closest('#createStatusForm');
   if (createStatusForm) {
     event.preventDefault();
@@ -2001,6 +2093,29 @@ function updateCurrentPresence(onlineStatus) {
   renderSignedInUser();
 }
 
+function startApprovedFamilyLists(user) {
+  if (familyListsStarted) return;
+  familyListsStarted = true;
+  unsubscribeUsers = subscribeAuthenticatedUsers(
+    (users) => {
+      authenticatedUsers = users;
+      state = reconcileAuthenticatedContacts(state, users, user.uid);
+      saveChatState();
+      renderAll();
+    },
+    (error) => showToast(error.message)
+  );
+  if (isFamilyOwnerEmail(user.email)) {
+    unsubscribePendingFamilyUsers = subscribePendingFamilyUsers(
+      (users) => {
+        pendingFamilyUsers = users.filter((item) => item.uid !== user.uid);
+        renderAll();
+      },
+      (error) => showToast(error.message)
+    );
+  }
+}
+
 document.addEventListener('visibilitychange', () => {
   updateCurrentPresence(document.hidden ? 'away' : 'online');
 });
@@ -2018,10 +2133,15 @@ function startFirebaseAuth() {
       authError = '';
       currentAuthUser = user;
       unsubscribeUsers();
+      unsubscribeCurrentUserProfile();
+      unsubscribePendingFamilyUsers();
       unsubscribeConversation();
+      familyListsStarted = false;
       subscribedConversationContactId = '';
       if (!user) {
         authenticatedUsers = [];
+        pendingFamilyUsers = [];
+        currentUserProfile = null;
         friendSearchQuery = '';
         currentPresenceStatus = '';
         renderAll();
@@ -2033,11 +2153,17 @@ function startFirebaseAuth() {
       });
       currentPresenceStatus = '';
       updateCurrentPresence(document.hidden ? 'away' : 'online');
-      unsubscribeUsers = subscribeAuthenticatedUsers(
-        (users) => {
-          authenticatedUsers = users;
-          state = reconcileAuthenticatedContacts(state, users, user.uid);
-          saveChatState();
+      unsubscribeCurrentUserProfile = subscribeCurrentUserProfile(
+        user.uid,
+        (profile) => {
+          currentUserProfile = profile;
+          if (isCurrentUserApproved()) {
+            startApprovedFamilyLists(user);
+          } else {
+            authenticatedUsers = [];
+            pendingFamilyUsers = [];
+            state = reconcileAuthenticatedContacts(state, [], user.uid);
+          }
           renderAll();
         },
         (error) => showToast(error.message)

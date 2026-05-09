@@ -6,27 +6,64 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function ownerEmail() {
+      return signedIn() &&
+        request.auth.token.email in ['aadhish.mahendran@gmail.com'];
+    }
+
     function userOwnsProfile(uid) {
       return signedIn() && request.auth.uid == uid;
     }
 
-    function userIsParticipant() {
-      return signedIn() &&
-        resource.data.participants is list &&
-        resource.data.participants.hasAny([request.auth.uid]);
+    function approvedUid(uid) {
+      return exists(/databases/$(database)/documents/users/$(uid)) &&
+        get(/databases/$(database)/documents/users/$(uid)).data.approved == true;
     }
 
-    function requestUserIsParticipant() {
-      return signedIn() &&
-        request.resource.data.participants is list &&
-        request.resource.data.participants.hasAny([request.auth.uid]);
+    function approvedUser(uid) {
+      return signedIn() && request.auth.uid == uid && approvedUid(uid);
     }
 
-    function validUserProfile(uid) {
+    function profileKeys() {
+      return [
+        'uid',
+        'email',
+        'displayName',
+        'photoURL',
+        'lastLoginAt',
+        'lastSeenAt',
+        'onlineStatus',
+        'isOnline',
+        'updatedAt',
+        'approved',
+        'role',
+        'approvedAt',
+        'approvedBy'
+      ];
+    }
+
+    function validProfileBasics(uid) {
+      return request.resource.data.keys().hasOnly(profileKeys())
+        && request.resource.data.uid == uid
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.displayName is string
+        && request.resource.data.photoURL is string
+        && request.resource.data.onlineStatus in ['online', 'away', 'offline']
+        && request.resource.data.isOnline is bool;
+    }
+
+    function validSelfProfileCreate(uid) {
       return userOwnsProfile(uid)
-        && request.resource.data.keys().hasOnly([
-          'uid',
-          'email',
+        && validProfileBasics(uid)
+        && (
+          (ownerEmail() && request.resource.data.approved == true && request.resource.data.role == 'owner') ||
+          (!ownerEmail() && request.resource.data.approved == false && request.resource.data.role == 'pending')
+        );
+    }
+
+    function validSelfProfileUpdate(uid) {
+      return userOwnsProfile(uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'displayName',
           'photoURL',
           'lastLoginAt',
@@ -35,48 +72,84 @@ service cloud.firestore {
           'isOnline',
           'updatedAt'
         ])
-        && request.resource.data.uid == request.auth.uid
-        && request.resource.data.email == request.auth.token.email
-        && request.resource.data.displayName is string
-        && request.resource.data.photoURL is string
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.email == resource.data.email
         && request.resource.data.onlineStatus in ['online', 'away', 'offline']
         && request.resource.data.isOnline is bool;
     }
 
+    function ownerWriteUserProfile(uid) {
+      return ownerEmail()
+        && request.resource.data.keys().hasOnly(profileKeys())
+        && request.resource.data.uid == uid
+        && request.resource.data.approved is bool
+        && request.resource.data.role in ['owner', 'member', 'pending'];
+    }
+
+    function validConversationParticipants(data) {
+      return approvedUser(request.auth.uid)
+        && data.participants is list
+        && data.participants.size() == 2
+        && data.participants.hasAny([request.auth.uid])
+        && approvedUid(data.participants[0])
+        && approvedUid(data.participants[1]);
+    }
+
+    function userIsParticipant() {
+      return approvedUser(request.auth.uid)
+        && resource.data.participants is list
+        && resource.data.participants.hasAny([request.auth.uid]);
+    }
+
     function validSenderIdentity() {
-      return request.resource.data.senderUid == request.auth.uid &&
-        request.resource.data.senderEmail == request.auth.token.email &&
-        request.resource.data.senderDisplayName is string &&
-        request.resource.data.text is string &&
-        request.resource.data.readBy is list &&
-        request.resource.data.readBy.hasOnly([request.auth.uid]);
+      return approvedUser(request.auth.uid)
+        && request.resource.data.senderUid == request.auth.uid
+        && request.resource.data.senderEmail == request.auth.token.email
+        && request.resource.data.senderDisplayName is string
+        && request.resource.data.text is string
+        && request.resource.data.readBy is list
+        && request.resource.data.readBy.hasOnly([request.auth.uid]);
     }
 
     function validReadReceiptUpdate() {
-      return signedIn()
+      return approvedUser(request.auth.uid)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBy'])
         && request.resource.data.readBy is list
         && (!('readBy' in resource.data) || request.resource.data.readBy.hasAll(resource.data.readBy))
         && request.resource.data.readBy.hasAny([request.auth.uid]);
     }
 
+    function validMessageConversation(conversationId) {
+      return exists(/databases/$(database)/documents/conversations/$(conversationId))
+        && get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants.hasAny([request.auth.uid])
+        && get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants == request.resource.data.participants;
+    }
+
     match /users/{uid} {
-      allow read: if signedIn();
-      allow create, update: if validUserProfile(uid);
+      allow read: if ownerEmail() || userOwnsProfile(uid) || resource.data.approved == true;
+      allow create: if validSelfProfileCreate(uid) || ownerWriteUserProfile(uid);
+      allow update: if validSelfProfileUpdate(uid) || ownerWriteUserProfile(uid);
       allow delete: if false;
+    }
+
+    match /invites/{email} {
+      allow read: if ownerEmail() || (signedIn() && email == request.auth.token.email);
+      allow create, update: if ownerEmail();
+      allow delete: if ownerEmail();
     }
 
     match /conversations/{conversationId} {
       allow read: if userIsParticipant();
-      allow create: if requestUserIsParticipant();
-      allow update: if userIsParticipant() && requestUserIsParticipant();
+      allow create: if validConversationParticipants(request.resource.data);
+      allow update: if userIsParticipant() && validConversationParticipants(request.resource.data);
       allow delete: if false;
 
       match /messages/{messageId} {
-        allow read: if exists(/databases/$(database)/documents/conversations/$(conversationId))
+        allow read: if approvedUser(request.auth.uid)
+          && exists(/databases/$(database)/documents/conversations/$(conversationId))
           && get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants.hasAny([request.auth.uid]);
-        allow create: if signedIn()
-          && validSenderIdentity()
+        allow create: if validSenderIdentity()
+          && validMessageConversation(conversationId)
           && request.resource.data.participants.hasAny([request.auth.uid]);
         allow update: if validReadReceiptUpdate();
         allow delete: if false;

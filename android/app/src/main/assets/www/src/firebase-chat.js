@@ -13,13 +13,15 @@ import {
   arrayUnion,
   collection,
   doc,
+  getDoc,
   getFirestore,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
   setDoc,
-  updateDoc
+  updateDoc,
+  where
 } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
 
 import { firebaseConfig, isFirebaseConfigured } from './firebase-config.js';
@@ -29,6 +31,7 @@ let auth;
 let db;
 let authPersistencePromise;
 const allowedOnlineStatuses = new Set(['online', 'away', 'offline']);
+export const familyOwnerEmails = ['aadhish.mahendran@gmail.com'];
 
 export function getFirebaseSetupStatus() {
   return {
@@ -55,6 +58,10 @@ function ensureAuthPersistence(firebase) {
 
 function normalizeEmail(email) {
   return typeof email === 'string' ? email.trim().toLowerCase() : '';
+}
+
+export function isFamilyOwnerEmail(email) {
+  return familyOwnerEmails.includes(normalizeEmail(email));
 }
 
 function normalizeOnlineStatus(onlineStatus) {
@@ -107,7 +114,7 @@ export async function logoutGoogleUser() {
 }
 
 export function toUserProfile(user) {
-  return {
+  const profile = {
     uid: user.uid,
     email: normalizeEmail(user.email),
     displayName: user.displayName ?? user.email ?? 'Google user',
@@ -117,12 +124,26 @@ export function toUserProfile(user) {
     isOnline: true,
     updatedAt: serverTimestamp()
   };
+  if (isFamilyOwnerEmail(user.email)) {
+    profile.approved = true;
+    profile.role = 'owner';
+    profile.approvedBy = user.uid;
+    profile.approvedAt = serverTimestamp();
+  }
+  return profile;
 }
 
 export async function saveUserProfile(user) {
   const firebase = ensureFirebase();
   if (!firebase || !user) return;
-  await setDoc(doc(firebase.db, 'users', user.uid), toUserProfile(user), { merge: true });
+  const userRef = doc(firebase.db, 'users', user.uid);
+  const existing = await getDoc(userRef);
+  const profile = toUserProfile(user);
+  if (!existing.exists() && !isFamilyOwnerEmail(user.email)) {
+    profile.approved = false;
+    profile.role = 'pending';
+  }
+  await setDoc(userRef, profile, { merge: true });
 }
 
 export async function setUserOnlineStatus(user, onlineStatus) {
@@ -137,6 +158,20 @@ export async function setUserOnlineStatus(user, onlineStatus) {
     lastSeenAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   }, { merge: true });
+}
+
+export function subscribeCurrentUserProfile(uid, onProfile, onError) {
+  const firebase = ensureFirebase();
+  if (!firebase || !uid) {
+    onProfile(null);
+    return () => {};
+  }
+
+  return onSnapshot(
+    doc(firebase.db, 'users', uid),
+    (snapshot) => onProfile(snapshot.exists() ? { uid: snapshot.id, ...snapshot.data() } : null),
+    (error) => onError?.(error)
+  );
 }
 
 function dedupeGoogleUsers(users) {
@@ -158,7 +193,7 @@ export function subscribeAuthenticatedUsers(onUsers, onError) {
   const { db } = firebase;
 
   return onSnapshot(
-    collection(db, 'users'),
+    query(collection(db, 'users'), where('approved', '==', true)),
     (snapshot) => {
       const users = dedupeGoogleUsers(snapshot.docs.map((item) => ({ uid: item.id, ...item.data() })))
         .sort((first, second) => {
@@ -170,6 +205,60 @@ export function subscribeAuthenticatedUsers(onUsers, onError) {
     },
     (error) => onError?.(error)
   );
+}
+
+export function subscribePendingFamilyUsers(onUsers, onError) {
+  const firebase = ensureFirebase();
+  if (!firebase) {
+    onUsers([]);
+    return () => {};
+  }
+
+  return onSnapshot(
+    query(collection(firebase.db, 'users'), where('approved', '==', false)),
+    (snapshot) => {
+      const users = dedupeGoogleUsers(snapshot.docs.map((item) => ({ uid: item.id, ...item.data() })))
+        .sort((first, second) => {
+          const firstName = first.displayName || first.email || '';
+          const secondName = second.displayName || second.email || '';
+          return firstName.localeCompare(secondName);
+        });
+      onUsers(users);
+    },
+    (error) => onError?.(error)
+  );
+}
+
+export async function sendFamilyInvite(email, user) {
+  const firebase = ensureFirebase();
+  const normalizedEmail = normalizeEmail(email);
+  if (!firebase) throw new Error('Firebase is not ready yet.');
+  if (!isFamilyOwnerEmail(user?.email)) throw new Error('Only the app owner can invite family.');
+  if (!normalizedEmail || !normalizedEmail.includes('@')) throw new Error('Enter a valid Gmail address.');
+
+  await setDoc(doc(firebase.db, 'invites', normalizedEmail), {
+    email: normalizedEmail,
+    invitedBy: user.uid,
+    invitedByEmail: normalizeEmail(user.email),
+    status: 'pending',
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+}
+
+export async function approveFamilyMember(uid, user) {
+  const firebase = ensureFirebase();
+  if (!firebase) throw new Error('Firebase is not ready yet.');
+  if (!isFamilyOwnerEmail(user?.email)) throw new Error('Only the app owner can approve family.');
+  if (!uid) throw new Error('Choose a family member to approve.');
+
+  await setDoc(doc(firebase.db, 'users', uid), {
+    approved: true,
+    role: 'member',
+    approvedBy: user.uid,
+    approvedAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  }, { merge: true });
 }
 
 export function getConversationId(firstUid, secondUid) {
