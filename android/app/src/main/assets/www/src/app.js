@@ -189,7 +189,7 @@ function saveChatState() {
   } catch {
     // Incognito can block local storage, so the server save below is the important fallback.
   }
-  if (currentAuthUser) return;
+  if (!authReady || currentAuthUser) return;
   isSavingChats = true;
   saveServerChatState(payload)
     .catch(() => showToast('Could not save chat on this browser'))
@@ -209,6 +209,7 @@ let activeMessageMenu = null;
 let currentAuthUser = null;
 let authReady = false;
 let authError = '';
+let chatsLoading = false;
 let authenticatedUsers = [];
 let pendingFamilyUsers = [];
 let currentUserProfile = null;
@@ -365,6 +366,19 @@ function renderUserPhoto(user, extraClass = '') {
 
 function renderAuthGate() {
   const configured = getFirebaseSetupStatus().configured;
+  if (!authReady) {
+    appShell.classList.add('auth-locked');
+    authGate.classList.remove('hidden');
+    authGate.innerHTML = `
+      <div class="auth-card">
+        <img src="app-icon.svg" alt="" />
+        <h1>Loading chats...</h1>
+        <p>Checking your safe sign-in and loading messages.</p>
+      </div>
+    `;
+    return;
+  }
+
   appShell.classList.toggle('auth-locked', !currentAuthUser);
   if (currentAuthUser) {
     authGate.classList.add('hidden');
@@ -383,6 +397,23 @@ function renderAuthGate() {
         ? '<button class="google-sign-in" type="button" data-auth-sign-in>Sign in with Google</button>'
         : '<small class="auth-error">Setup is not ready yet. Ask a parent to add the app keys.</small>'}
     </div>
+  `;
+}
+
+function renderLoadingChats() {
+  panels.forEach((panel) => {
+    panel.classList.toggle('hidden', panel.dataset.panel !== state.activeSection);
+  });
+  railButtons.forEach((button) => {
+    button.classList.toggle('active', button.dataset.section === state.activeSection);
+  });
+  conversation.classList.add('hidden');
+  emptyState.classList.remove('hidden');
+  emptyState.innerHTML = `
+    <div class="empty-illustration">KW</div>
+    <h2>Loading chats...</h2>
+    <p>Getting your friends and messages from Firebase.</p>
+    <small>This happens automatically after sign-in.</small>
   `;
 }
 
@@ -1273,7 +1304,12 @@ function subscribeActiveConversation() {
 function renderAll() {
   renderAuthGate();
   renderSignedInUser();
+  if (!authReady) return;
   if (!currentAuthUser) return;
+  if (chatsLoading) {
+    renderLoadingChats();
+    return;
+  }
   if (renderFamilyAccessGate()) return;
   renderFriendsInvitesPanel();
   renderSettingsPanel();
@@ -1286,7 +1322,7 @@ function renderAll() {
 }
 
 async function hydrateChatsFromServer() {
-  if (currentAuthUser) return;
+  if (!authReady || currentAuthUser) return;
   const serverState = await loadServerChatState();
   if (!Array.isArray(serverState.contacts) || !serverState.contacts.length) return;
   const serverSnapshot = stringifyChatPayload({
@@ -2123,10 +2159,15 @@ function startApprovedFamilyLists(user) {
     (users) => {
       authenticatedUsers = users;
       state = reconcileAuthenticatedContacts(state, users, user.uid);
+      chatsLoading = false;
       saveChatState();
       renderAll();
     },
-    (error) => showToast(error.message)
+    (error) => {
+      chatsLoading = false;
+      showToast(error.message);
+      renderAll();
+    }
   );
   if (isFamilyOwnerEmail(user.email)) {
     unsubscribePendingFamilyUsers = subscribePendingFamilyUsers(
@@ -2155,6 +2196,7 @@ function startFirebaseAuth() {
       authReady = true;
       authError = '';
       currentAuthUser = user;
+      chatsLoading = Boolean(user);
       unsubscribeUsers();
       unsubscribeCurrentUserProfile();
       unsubscribePendingFamilyUsers();
@@ -2167,12 +2209,14 @@ function startFirebaseAuth() {
         currentUserProfile = null;
         friendSearchQuery = '';
         currentPresenceStatus = '';
+        chatsLoading = false;
         renderAll();
         return;
       }
 
       await saveUserProfile(user).catch((error) => {
         authError = error.message;
+        chatsLoading = false;
       });
       currentPresenceStatus = '';
       updateCurrentPresence(document.hidden ? 'away' : 'online');
@@ -2186,10 +2230,15 @@ function startFirebaseAuth() {
             authenticatedUsers = [];
             pendingFamilyUsers = [];
             state = reconcileAuthenticatedContacts(state, [], user.uid);
+            chatsLoading = false;
           }
           renderAll();
         },
-        (error) => showToast(error.message)
+        (error) => {
+          chatsLoading = false;
+          showToast(error.message);
+          renderAll();
+        }
       );
       renderAll();
     },
@@ -2197,6 +2246,7 @@ function startFirebaseAuth() {
       authReady = true;
       authError = error.message;
       currentAuthUser = null;
+      chatsLoading = false;
       renderAll();
     }
   );
