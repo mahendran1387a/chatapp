@@ -3,6 +3,7 @@ import {
   createInitialState,
   deleteContactChat,
   deleteMessage,
+  filterAuthenticatedUsers,
   filterContacts,
   getActionView,
   getActiveContact,
@@ -27,7 +28,6 @@ import {
   signInWithGoogle,
   startAuthListener,
   subscribeAuthenticatedUsers,
-  subscribeUserByEmail,
   subscribeConversationMessages
 } from './firebase-chat.js';
 
@@ -205,10 +205,7 @@ let currentAuthUser = null;
 let authReady = false;
 let authError = '';
 let authenticatedUsers = [];
-let friendSearchResults = [];
-let friendSearchStatus = 'idle';
 let unsubscribeUsers = () => {};
-let unsubscribeFriendSearch = () => {};
 let unsubscribeConversation = () => {};
 let subscribedConversationContactId = '';
 let settingsSearchQuery = '';
@@ -229,8 +226,8 @@ const createdChannelValues = {
   Description: ''
 };
 const profileOwnershipLabels = {
-  googleName: 'Google name',
-  googlePhoto: 'Google photo',
+  googleName: 'Safe sign-in name',
+  googlePhoto: 'Profile photo',
   favoriteColor: 'Favorite color',
   funBio: 'Fun bio'
 };
@@ -279,14 +276,12 @@ function getContactEmail(contact) {
 }
 
 function renderContactAvatar(contact, extraClass = '') {
-  const avatar = renderAvatar(
+  return renderAvatar(
     contact.avatar,
     contact.color,
     extraClass,
     contact.textColor ?? '#ffffff'
   );
-  if (!getContactEmail(contact)) return avatar;
-  return `<span class="contact-avatar-wrap">${avatar}<span class="gmail-badge">G</span></span>`;
 }
 
 function escapeAttribute(value) {
@@ -310,19 +305,11 @@ function isTextEntryActive() {
 }
 
 function getUserName(user) {
-  return user?.displayName || user?.email || 'Google user';
+  return user?.displayName || user?.email?.split('@')[0] || 'Signed-in friend';
 }
 
 function getUserAvatar(user) {
   return initials(getUserName(user)) || 'GU';
-}
-
-function renderUserPhoto(user, className) {
-  const photoUrl = user?.photoURL ?? '';
-  if (photoUrl) {
-    return `<img class="${className}" src="${escapeAttribute(photoUrl)}" alt="${escapeAttribute(getUserName(user))} Google photo" />`;
-  }
-  return `<span class="${className}">${escapeHtml(getUserAvatar(user))}</span>`;
 }
 
 function getPresenceStatusLabel(onlineStatus) {
@@ -352,7 +339,7 @@ function insertEmojiIntoMessage(input, emoji) {
 
 function renderUserPhoto(user, extraClass = '') {
   if (user?.photoURL) {
-    return `<img class="avatar ${extraClass}" src="${escapeAttribute(user.photoURL)}" alt="" />`;
+    return `<img class="avatar ${extraClass}" src="${escapeAttribute(user.photoURL)}" alt="${escapeAttribute(getUserName(user))} profile photo" />`;
   }
   return renderAvatar(getUserAvatar(user), '#cbd6dc', extraClass, '#42545d');
 }
@@ -371,11 +358,11 @@ function renderAuthGate() {
     <div class="auth-card">
       <img src="app-icon.svg" alt="" />
       <h1>Kids WhatsApp</h1>
-      <p>A bright, safe place to chat with friends after Google sign-in.</p>
+      <p>A bright, safe place to chat with friends after safe sign-in.</p>
       ${authError ? `<small class="auth-error">${authError}</small>` : ''}
       ${configured
         ? '<button class="google-sign-in" type="button" data-auth-sign-in>Sign in with Google</button>'
-        : '<small class="auth-error">Firebase is not configured yet. Add your project keys in src/firebase-config.js.</small>'}
+        : '<small class="auth-error">Setup is not ready yet. Ask a parent to add the app keys.</small>'}
     </div>
   `;
 }
@@ -400,7 +387,7 @@ function renderSignedInUser() {
     ${renderUserPhoto(currentAuthUser, 'signed-in-avatar')}
     <span>
       <strong>${escapeHtml(getUserName(currentAuthUser))}</strong>
-      <small>${escapeHtml(currentAuthUser?.email ?? '')}</small>
+      <small>Your profile</small>
       ${renderPresenceStatus(currentPresenceStatus || 'online', 'mini')}
     </span>
   `;
@@ -408,7 +395,7 @@ function renderSignedInUser() {
 
 function requireAuth() {
   if (currentAuthUser) return true;
-  showToast('Sign in with Google first');
+  showToast('Sign in first');
   renderAuthGate();
   return false;
 }
@@ -606,64 +593,55 @@ function renderMenuView(view) {
   `;
 }
 
-function renderAuthenticatedUserRows(emptyMessage) {
-  const users = authenticatedUsers.filter((user) => user.uid !== currentAuthUser?.uid);
+function renderAuthenticatedUserRow(user) {
+  return `
+    <button class="auth-user-row" type="button" data-auth-user-id="${escapeAttribute(user.uid)}">
+      ${renderUserPhoto(user, 'small')}
+      <span>
+        <strong>${escapeHtml(getUserName(user))}</strong>
+        <small>Signed-in friend</small>
+        ${renderPresenceStatus(user.onlineStatus)}
+      </span>
+    </button>
+  `;
+}
+
+function getFilteredAuthenticatedUsers() {
+  return filterAuthenticatedUsers(authenticatedUsers, currentAuthUser?.uid ?? '', friendSearchQuery);
+}
+
+function renderAuthenticatedUserRows(users, emptyMessage) {
   return users.length
-    ? users.map((user) => `
-        <button class="auth-user-row" type="button" data-auth-user-id="${user.uid}">
-          ${renderUserPhoto(user, 'small')}
-          <span>
-            <strong>${escapeHtml(getUserName(user))}</strong>
-            <small>${escapeHtml(user.email ?? '')}</small>
-            ${renderPresenceStatus(user.onlineStatus)}
-          </span>
-        </button>
-      `).join('')
+    ? users.map(renderAuthenticatedUserRow).join('')
     : `<p class="empty-copy">${emptyMessage}</p>`;
 }
 
-function renderFriendSearchRows() {
+function renderFriendSearchRows(emptyMessage) {
+  const users = getFilteredAuthenticatedUsers();
   const query = friendSearchQuery.trim();
-  if (!query) return '<p class="empty-copy">Type your friend Gmail to find them.</p>';
-  if (friendSearchStatus === 'idle') return '<p class="empty-copy">Press Search to find or invite this Gmail.</p>';
-  if (friendSearchStatus === 'loading') return '<p class="empty-copy">Searching...</p>';
-  const users = friendSearchResults.filter((user) => user.uid !== currentAuthUser?.uid);
-  if (!users.length) return '<p class="empty-copy invite-copy">Invite sent / ask friend to sign in first.</p>';
-  const countText = users.length === 1 ? 'Friend found' : `${users.length} friends found`;
+  const title = query ? 'Search results' : 'Online friends';
+  const noMatch = query ? 'No friend matched that search.' : emptyMessage;
   return `
-    <p class="empty-copy found-copy">${countText}. Tap the friend to start chatting.</p>
-    ${users.map((user) => `
-      <button class="auth-user-row" type="button" data-auth-user-id="${user.uid}">
-        ${renderUserPhoto(user, 'small')}
-        <span>
-          <strong>${escapeHtml(getUserName(user))}</strong>
-          <small>${escapeHtml(user.email ?? '')}</small>
-          ${renderPresenceStatus(user.onlineStatus)}
-        </span>
-      </button>
-    `).join('')}
+    <h3 class="user-list-heading">${title}</h3>
+    ${renderAuthenticatedUserRows(users, noMatch)}
   `;
 }
 
 function renderFriendSearchForm(autoListMessage) {
   return `
     <div class="invite-friend-intro">
-      <h3>Invite Friend</h3>
-      <p>Enter a Gmail address. If your friend signed in before, you can start chatting right away.</p>
+      <h3>Find Friends</h3>
+      <p>Everyone who signs in appears here automatically.</p>
     </div>
-    <form id="friendSearchForm" class="friend-search-form">
+    <div class="friend-search-form" id="friendSearchForm">
       <label class="friend-search">
-        <span>Find friend by Gmail</span>
-        <input id="friendSearchInput" name="friendEmail" type="email" autocomplete="off" value="${escapeAttribute(friendSearchQuery)}" placeholder="friend@gmail.com" />
+        <span>Search friends</span>
+        <input id="friendSearchInput" data-friend-search-input type="search" autocomplete="off" value="${escapeAttribute(friendSearchQuery)}" placeholder="Type a friend's name" />
       </label>
-      <button class="friend-search-button" type="submit" data-friend-search-submit>Search / Invite</button>
-    </form>
-    <div class="auth-user-list friend-search-results">
-      ${renderFriendSearchRows()}
     </div>
-    ${!friendSearchQuery.trim()
-      ? `<div class="auth-user-list"><h3 class="user-list-heading">Signed-in friends</h3>${renderAuthenticatedUserRows(autoListMessage)}</div>`
-      : ''}
+    <div class="auth-user-list friend-search-results">
+      ${renderFriendSearchRows(autoListMessage)}
+    </div>
   `;
 }
 
@@ -674,8 +652,8 @@ function renderAuthenticatedUserList(view) {
     <div class="business-profile-form">
       <div class="detail-illustration"></div>
       <h2>${view.title}</h2>
-      <p>Choose a Google signed-in user to start a chat. Names and emails come from Google only.</p>
-      ${renderFriendSearchForm('No Google signed-in users were found yet. Ask your friend to sign in once, then they will appear here automatically.')}
+      <p>Pick a signed-in friend to start chatting.</p>
+      ${renderFriendSearchForm('Ask your friend to sign in once, then they will appear here automatically.')}
     </div>
   `;
 }
@@ -745,9 +723,9 @@ function renderSettingsPage(pageId) {
 }
 
 function renderProfileSettingsPage(page) {
-  const googleName = getUserName(currentAuthUser);
-  const googleEmail = currentAuthUser?.email ?? 'Google account';
-  const photoSummary = currentAuthUser?.photoURL ? 'Google photo connected' : `${getUserAvatar(currentAuthUser)} initials`;
+  const profileName = getUserName(currentAuthUser);
+  const profilePrivacyLabel = 'Private sign-in';
+  const photoSummary = currentAuthUser?.photoURL ? 'Profile photo connected' : `${getUserAvatar(currentAuthUser)} initials`;
   return `
     <div class="nested-settings">
       <header class="nested-header">
@@ -757,13 +735,13 @@ function renderProfileSettingsPage(page) {
       <form class="profile-form" id="profileForm">
         <div class="profile-ownership-header">
           ${renderUserPhoto(currentAuthUser, 'profile-edit-photo')}
-          <strong>${escapeHtml(googleName)}</strong>
-          <small>${escapeHtml(googleEmail)}</small>
+          <strong>${escapeHtml(profileName)}</strong>
+          <small>${profilePrivacyLabel}</small>
         </div>
         ${page.items
           .map((item) => {
             if (item.type === 'readonly') {
-              const value = item.label === 'Name' ? googleName : photoSummary;
+              const value = item.label === 'Name' ? profileName : photoSummary;
               const sourceLabel =
                 item.label === 'Name' ? profileOwnershipLabels.googleName : profileOwnershipLabels.googlePhoto;
               return `
@@ -854,14 +832,14 @@ function renderSettingsScrollableContent() {
         ${renderUserPhoto(currentAuthUser, 'profile-photo')}
         <span>
           <strong>${escapeHtml(getUserName(currentAuthUser))}</strong>
-          <small>${escapeHtml(currentAuthUser?.email ?? 'Google account')}</small>
+          <small>Private sign-in</small>
           <small>${escapeHtml(profileValues.Status || 'Ready to chat')}</small>
         </span>
       </button>
       <div class="settings-list">
         <button class="settings-row active" data-settings-page="account">
           <span class="line-icon key-icon"></span>
-          <span><strong>Account</strong><small>Google login keeps names real</small></span>
+          <span><strong>Account</strong><small>Safe sign-in keeps names real</small></span>
         </button>
         <button class="settings-row" data-settings-page="chatsSettings">
           <span class="line-icon chats-icon"></span>
@@ -873,7 +851,7 @@ function renderSettingsScrollableContent() {
         </button>
         <button class="settings-row logout-row" data-auth-logout>
           <span class="line-icon logout-icon"></span>
-          <span><strong>Log out of Google</strong><small>${escapeHtml(currentAuthUser?.email ?? '')}</small></span>
+          <span><strong>Log out</strong><small>Come back later safely</small></span>
         </button>
       </div>
   `;
@@ -911,9 +889,15 @@ function renderChats() {
     filter: currentFilter
   });
 
-  chatList.innerHTML = contacts
-    .map(
-      (contact) => `
+  const query = searchInput.value.trim();
+  const heading = query ? 'Search results' : 'Recent chats';
+  chatList.innerHTML = `
+    <h2 class="chat-section-heading">${heading}</h2>
+    ${
+      contacts.length
+        ? contacts
+            .map(
+              (contact) => `
         <div class="chat-item ${contact.id === state.activeContactId ? 'active' : ''}" data-contact-id="${contact.id}">
           <button class="chat-main" type="button" data-contact-open="${contact.id}">
             ${renderContactAvatar(contact)}
@@ -931,8 +915,11 @@ function renderChats() {
           </button>
         </div>
       `
-    )
-    .join('');
+            )
+            .join('')
+        : '<p class="empty-copy chat-list-empty">Ask your friend to sign in once.</p>'
+    }
+  `;
 }
 
 function renderConversation() {
@@ -1029,7 +1016,7 @@ function renderConversation() {
     const text = input.value;
     const activeContact = getActiveContact(state);
     if (!activeContact?.uid) {
-      showToast('Choose a signed-in Google friend first.');
+      showToast('Choose a signed-in friend first.');
       return;
     }
     try {
@@ -1138,9 +1125,9 @@ function renderSection() {
     conversation.classList.remove('hidden');
     emptyState.innerHTML = `
       <div class="empty-illustration">WA</div>
-      <h2>Kids WhatsApp on Web</h2>
-      <p>Grow, organise and manage your account.</p>
-      <small>Your personal messages are end-to-end encrypted</small>
+      <h2>Kids WhatsApp</h2>
+      <p>Choose a friend and start a kind conversation.</p>
+      <small>Safe text chat and voice calls.</small>
     `;
   }
 }
@@ -1290,7 +1277,7 @@ function showContactMenu(contactId, anchor = {}) {
     <small>${getContactEmail(contact) || contact.phone || 'No contact detail saved'}</small>
     ${
       contact.uid
-        ? '<small class="verified-contact-note">Google verified contact</small>'
+        ? '<small class="verified-contact-note">Safe signed-in friend</small>'
         : `<button type="button" data-contact-menu-action="edit" data-contact-id="${contact.id}">Edit name and phone</button>`
     }
     <button type="button" class="danger-row" data-contact-menu-action="delete-contact" data-contact-id="${contact.id}">Delete username</button>
@@ -1331,7 +1318,7 @@ function showEditContactDialog(contactId) {
   const contact = getContactById(contactId);
   if (!contact) return;
   if (contact.uid) {
-    showToast('Google contact details cannot be edited here');
+    showToast('Signed-in friend details cannot be edited here');
     return;
   }
   closeContactMenu();
@@ -1494,8 +1481,8 @@ function showActionDialog(view) {
         <div class="business-profile-form dialog-form">
           <div class="detail-illustration"></div>
           <h2>${view.title}</h2>
-          <p>Choose a Google signed-in user to start a chat.</p>
-          ${renderFriendSearchForm('No Google signed-in users were found yet.')}
+          <p>Pick a signed-in friend to start chatting.</p>
+          ${renderFriendSearchForm('Ask your friend to sign in once.')}
         </div>
       </section>
     `;
@@ -1656,7 +1643,7 @@ document.addEventListener('click', (event) => {
 
   const authUserButton = event.target.closest('[data-auth-user-id]');
   if (authUserButton) {
-    const selectedUser = [...friendSearchResults, ...authenticatedUsers].find((user) => user.uid === authUserButton.dataset.authUserId);
+    const selectedUser = authenticatedUsers.find((user) => user.uid === authUserButton.dataset.authUserId);
     if (selectedUser) {
       activeAction = null;
       activeSettingsPage = null;
@@ -1854,11 +1841,8 @@ document.addEventListener('input', (event) => {
   const friendSearchInput = event.target.closest('#friendSearchInput');
   if (friendSearchInput) {
     friendSearchQuery = friendSearchInput.value;
-    friendSearchResults = [];
-    friendSearchStatus = 'idle';
-    unsubscribeFriendSearch();
     const results = document.querySelector('.friend-search-results');
-    if (results) results.innerHTML = renderFriendSearchRows();
+    if (results) results.innerHTML = renderFriendSearchRows('Ask your friend to sign in once.');
     return;
   }
 
@@ -1888,40 +1872,6 @@ document.addEventListener('keydown', (event) => {
 });
 
 document.addEventListener('submit', (event) => {
-  const friendSearchForm = event.target.closest('#friendSearchForm');
-  if (friendSearchForm) {
-    event.preventDefault();
-    const formData = new FormData(friendSearchForm);
-    friendSearchQuery = String(formData.get('friendEmail') ?? '').trim();
-    friendSearchResults = [];
-    friendSearchStatus = friendSearchQuery.trim() ? 'loading' : 'idle';
-    unsubscribeFriendSearch();
-    const input = friendSearchForm.querySelector('#friendSearchInput');
-    if (input) input.value = friendSearchQuery;
-    const results = document.querySelector('.friend-search-results');
-    if (!friendSearchQuery.trim()) {
-      if (results) results.innerHTML = renderFriendSearchRows();
-      return;
-    }
-    if (results) results.innerHTML = renderFriendSearchRows();
-    unsubscribeFriendSearch = subscribeUserByEmail(
-      friendSearchQuery,
-      (users) => {
-        friendSearchResults = users;
-        friendSearchStatus = 'done';
-        const nextResults = document.querySelector('.friend-search-results');
-        if (nextResults) nextResults.innerHTML = renderFriendSearchRows();
-      },
-      (error) => {
-        friendSearchStatus = 'done';
-        const nextResults = document.querySelector('.friend-search-results');
-        if (nextResults) nextResults.innerHTML = renderFriendSearchRows();
-        showToast(error.message);
-      }
-    );
-    return;
-  }
-
   const createStatusForm = event.target.closest('#createStatusForm');
   if (createStatusForm) {
     event.preventDefault();
@@ -1949,7 +1899,7 @@ document.addEventListener('submit', (event) => {
   const newChatForm = event.target.closest('#newChatForm');
   if (newChatForm) {
     event.preventDefault();
-    showToast('Choose a signed-in Google user');
+    showToast('Choose a signed-in friend');
     return;
   }
 
@@ -1958,7 +1908,7 @@ document.addEventListener('submit', (event) => {
     event.preventDefault();
     const contact = getContactById(editContactForm.dataset.contactId);
     if (contact?.uid) {
-      showToast('Google contact details cannot be edited here');
+      showToast('Signed-in friend details cannot be edited here');
       editContactForm.closest('.action-dialog-backdrop')?.remove();
       return;
     }
@@ -2068,13 +2018,11 @@ function startFirebaseAuth() {
       authError = '';
       currentAuthUser = user;
       unsubscribeUsers();
-      unsubscribeFriendSearch();
       unsubscribeConversation();
       subscribedConversationContactId = '';
       if (!user) {
         authenticatedUsers = [];
-        friendSearchResults = [];
-        friendSearchStatus = 'idle';
+        friendSearchQuery = '';
         currentPresenceStatus = '';
         renderAll();
         return;

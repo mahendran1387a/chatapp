@@ -83,9 +83,9 @@ const sampleChannels = [
 const actionViews = {
   newChat: {
     title: 'New chat',
-    body: 'Search your contacts, start a fresh conversation, or create a group chat.',
+    body: 'Pick a signed-in friend from the live list, or filter the list by name.',
     primaryAction: 'Start chat',
-    points: ['Recent contacts', 'New group', 'New contact'],
+    points: ['Signed-in friends', 'Online status', 'Safe text chat'],
     form: 'newChat'
   },
   chatMenu: {
@@ -94,7 +94,7 @@ const actionViews = {
     primaryAction: 'Open menu',
     points: ['Verified friends', 'Groups', 'Settings'],
     menuItems: [
-      { label: 'Contact info', detail: 'View verified Google profile' },
+      { label: 'Contact info', detail: 'View safe profile' },
       { label: 'Mute notifications', detail: 'Silence this chat' },
       { label: 'Delete chat', detail: 'Delete this conversation', danger: true }
     ]
@@ -107,15 +107,15 @@ const actionViews = {
   },
   chatSearch: {
     title: 'Search chat',
-    body: 'Search inside the selected conversation for messages, links, and media.',
+    body: 'Search inside the selected conversation for text messages.',
     primaryAction: 'Search',
-    points: ['Messages', 'Links', 'Media']
+    points: ['Messages', 'Kind words', 'Read ticks']
   },
   attach: {
     title: 'Attach',
-    body: 'Attach photos, documents, contacts, or products to the conversation.',
-    primaryAction: 'Choose file',
-    points: ['Photos', 'Documents', 'Contacts']
+    body: 'Media sharing is turned off to keep Kids WhatsApp simple and safe.',
+    primaryAction: 'OK',
+    points: ['Text only', 'Voice calls', 'Safe chats']
   },
   addStatus: {
     title: 'Add status update',
@@ -262,15 +262,15 @@ const actionViews = {
   },
   chooseNotifications: {
     title: 'Notifications',
-    body: 'Choose how you want to get notifications for messages, groups, calls, and status updates.',
+    body: 'Choose how you want to get notifications for messages, groups, and voice calls.',
     primaryAction: 'Choose now',
-    points: ['Messages', 'Groups', 'Status']
+    points: ['Messages', 'Groups', 'Voice calls']
   },
   profile: {
     title: 'Profile',
-    body: 'See your Google name and photo, then add a friendly status, favorite color, and fun bio.',
+    body: 'See your safe sign-in name and photo, then add a friendly status, favorite color, and fun bio.',
     primaryAction: 'Edit profile',
-    points: ['Aadhish Mahendran', 'Google photo', 'Favorite color', 'Fun bio']
+    points: ['Your name', 'Profile photo', 'Favorite color', 'Fun bio']
   },
   account: {
     title: 'Account',
@@ -286,9 +286,9 @@ const actionViews = {
   },
   chatsSettings: {
     title: 'Chats',
-    body: 'Adjust theme, wallpaper, media visibility, and chat settings.',
+    body: 'Adjust theme, wallpaper, and simple chat settings.',
     primaryAction: 'Open chats',
-    points: ['Theme', 'Wallpaper', 'Chat backup']
+    points: ['Theme', 'Wallpaper', 'Enter is send']
   },
   notificationsSettings: {
     title: 'Notifications',
@@ -340,8 +340,8 @@ const settingsPages = {
   profile: {
     title: 'Profile',
     items: [
-      { type: 'readonly', label: 'Name', value: 'Aadhish Mahendran', detail: 'Google name keeps your identity real.' },
-      { type: 'readonly', label: 'Photo', value: '', detail: 'Google photo from your signed-in account.' },
+      { type: 'readonly', label: 'Name', value: 'Aadhish Mahendran', detail: 'Safe sign-in keeps your identity real.' },
+      { type: 'readonly', label: 'Photo', value: '', detail: 'Profile photo from your signed-in account.' },
       { type: 'input', label: 'Status', value: 'Ready to chat', detail: 'A short mood your friends can see.' },
       { type: 'input', label: 'Favorite color', value: 'Purple', detail: 'Pick a color that feels like you.' },
       {
@@ -357,28 +357,21 @@ const settingsPages = {
     items: [
       { type: 'toggle', label: 'Messages', detail: 'Show desktop notifications for new messages.', enabled: true },
       { type: 'toggle', label: 'Groups', detail: 'Notify me about group messages.', enabled: true },
-      { type: 'toggle', label: 'Status', detail: 'Notify me when contacts post status updates.', enabled: false },
       { type: 'action', label: 'Notification tone', detail: 'Default' }
     ]
   },
   account: {
     title: 'Account',
     items: [
-      { type: 'toggle', label: 'Security notifications', detail: 'Show notifications when a contact security code changes.', enabled: true },
-      { type: 'action', label: 'Two-step verification', detail: 'Add extra security to your account.' },
-      { type: 'action', label: 'Request account info', detail: 'Create a report of your account information.' },
-      { type: 'danger', label: 'Delete account', detail: 'Permanently delete your account from this demo.' }
+      { type: 'toggle', label: 'Safety reminders', detail: 'Show reminders to chat kindly and safely.', enabled: true },
+      { type: 'action', label: 'Parent help', detail: 'Ask a parent before changing account settings.' }
     ]
   },
   privacy: {
     title: 'Privacy',
     items: [
-      { type: 'action', label: 'Last seen and online', detail: 'Everyone' },
-      { type: 'action', label: 'Profile photo', detail: 'My contacts' },
-      { type: 'action', label: 'About', detail: 'Everyone' },
-      { type: 'action', label: 'Blocked contacts', detail: '0' },
-      { type: 'toggle', label: 'Read receipts', detail: 'Send and receive read receipts.', enabled: true },
-      { type: 'toggle', label: 'Disappearing messages', detail: 'Start new chats with disappearing messages.', enabled: false }
+      { type: 'toggle', label: 'Read receipts', detail: 'Show double ticks when a friend reads a message.', enabled: true },
+      { type: 'action', label: 'Blocked friends', detail: 'Ask a parent for help.' }
     ]
   },
   chatsSettings: {
@@ -386,9 +379,7 @@ const settingsPages = {
     items: [
       { type: 'action', label: 'Theme', detail: 'System default' },
       { type: 'action', label: 'Wallpaper', detail: 'Choose chat wallpaper.' },
-      { type: 'toggle', label: 'Enter is send', detail: 'Press Enter to send messages.', enabled: false },
-      { type: 'toggle', label: 'Media visibility', detail: 'Show newly downloaded media in gallery.', enabled: true },
-      { type: 'action', label: 'Chat backup', detail: 'Back up messages and media.' }
+      { type: 'toggle', label: 'Enter is send', detail: 'Press Enter to send messages.', enabled: false }
     ]
   },
   notificationsSettings: {
@@ -413,10 +404,8 @@ const settingsPages = {
   help: {
     title: 'Help and feedback',
     items: [
-      { type: 'action', label: 'Help center', detail: 'Get help with WhatsApp features.' },
-      { type: 'action', label: 'Contact us', detail: 'Tell us what happened.' },
-      { type: 'action', label: 'Terms and privacy policy', detail: 'Read legal information.' },
-      { type: 'action', label: 'App info', detail: 'ChatApp Web demo version 1.0' }
+      { type: 'action', label: 'Kind chat help', detail: 'Ask a parent or teacher if something feels wrong.' },
+      { type: 'action', label: 'App info', detail: 'Kids WhatsApp demo version 1.0' }
     ]
   },
   logout: {
@@ -438,11 +427,6 @@ const settingOptionViews = {
     title: 'Wallpaper',
     body: 'Choose a wallpaper for chats.',
     options: ['Default doodle', 'Solid mint', 'Plain light']
-  },
-  'Chat backup': {
-    title: 'Chat backup',
-    body: 'Choose how backups should work in this demo.',
-    options: ['Back up now', 'Daily backup', 'Weekly backup']
   },
   'Two-step verification': {
     title: 'Two-step verification',
@@ -525,14 +509,12 @@ const settingDangerViews = {
 
 const settingsSearchRows = [
   { label: 'Profile', detail: 'Name, photo, status, favorite color, fun bio', page: 'profile' },
-  { label: 'Choose your notifications', detail: 'Messages, groups, status notifications', page: 'chooseNotifications' },
-  { label: 'Business tools', detail: 'Quick replies, labels, catalog', section: 'business' },
-  { label: 'Account', detail: 'Security notifications, account info, two-step verification', page: 'account' },
-  { label: 'Privacy', detail: 'Blocked contacts, disappearing messages, last seen', page: 'privacy' },
-  { label: 'Chats', detail: 'Theme, wallpaper, chat settings, chat backup', page: 'chatsSettings' },
+  { label: 'Choose your notifications', detail: 'Messages, groups, and voice calls', page: 'chooseNotifications' },
+  { label: 'Account', detail: 'Safety reminders and parent help', page: 'account' },
+  { label: 'Privacy', detail: 'Read ticks and blocked friends', page: 'privacy' },
+  { label: 'Chats', detail: 'Theme, wallpaper, and chat settings', page: 'chatsSettings' },
   { label: 'Notifications', detail: 'Messages, groups, sounds, message tone', page: 'notificationsSettings' },
-  { label: 'Keyboard shortcuts', detail: 'Quick actions, search, new chat, archive chat', page: 'keyboardShortcuts' },
-  { label: 'Help and feedback', detail: 'Help center, contact us, privacy policy', page: 'help' },
+  { label: 'Help and feedback', detail: 'Kind chat help and app info', page: 'help' },
   { label: 'Log out', detail: 'Sign out from this computer', page: 'logout' }
 ];
 
@@ -572,6 +554,25 @@ function getUserAvatar(user) {
     .toUpperCase();
 }
 
+function normalizeUserEmail(user) {
+  return typeof user?.email === 'string' ? user.email.trim().toLowerCase() : '';
+}
+
+export function filterAuthenticatedUsers(users = [], currentUid = '', query = '') {
+  const needle = query.trim().toLowerCase();
+  const seenEmails = new Set();
+  return users
+    .filter((user) => {
+      const email = normalizeUserEmail(user);
+      if (!user?.uid || user.uid === currentUid || !email || seenEmails.has(email)) return false;
+      seenEmails.add(email);
+      if (!needle) return true;
+      const name = getUserDisplayName(user).toLowerCase();
+      return name.includes(needle) || email.includes(needle);
+    })
+    .sort((first, second) => getUserDisplayName(first).localeCompare(getUserDisplayName(second)));
+}
+
 function buildAuthenticatedContact(user, existingContact = {}) {
   const name = getUserDisplayName(user);
   const email = user.email ?? makeGmailFromName(name);
@@ -590,7 +591,7 @@ function buildAuthenticatedContact(user, existingContact = {}) {
     textColor: existingContact.textColor ?? '#42545d',
     preview: existingContact.messages?.at(-1)?.deleted
       ? 'This message was deleted'
-      : existingContact.messages?.at(-1)?.text ?? email,
+      : existingContact.messages?.at(-1)?.text ?? 'Say hi!',
     time: existingContact.time ?? 'Now',
     unread: existingContact.unread ?? 0,
     favorite: existingContact.favorite ?? false,
@@ -606,7 +607,7 @@ function withContactProfile(contact) {
   return {
     ...contact,
     email,
-    preview: contact.deleted ? 'This message was deleted' : email,
+    preview: contact.deleted ? 'This message was deleted' : contact.preview || 'Say hi!',
     color: contact.color ?? '#cbd6dc',
     textColor: contact.textColor ?? '#42545d'
   };
@@ -629,13 +630,7 @@ export function createAuthenticatedContact(state, user) {
 }
 
 export function reconcileAuthenticatedContacts(state, users = [], currentUid = '') {
-  const seenEmails = new Set();
-  const authenticatedUsers = users.filter((user) => {
-    const email = typeof user?.email === 'string' ? user.email.trim().toLowerCase() : '';
-    if (!user?.uid || user.uid === currentUid || !email || seenEmails.has(email)) return false;
-    seenEmails.add(email);
-    return true;
-  });
+  const authenticatedUsers = filterAuthenticatedUsers(users, currentUid);
   const existingById = new Map(state.contacts.map((contact) => [contact.id, contact]));
   const contacts = authenticatedUsers.map((user) => buildAuthenticatedContact(user, existingById.get(user.uid)));
   const activeContactId = contacts.some((contact) => contact.id === state.activeContactId)
@@ -734,7 +729,8 @@ export function filterContacts(state, { query = '', filter = 'all' } = {}) {
   return state.contacts.filter((contact) => {
     const matchesQuery =
       contact.name.toLowerCase().includes(needle) ||
-      contact.preview.toLowerCase().includes(needle);
+      contact.preview.toLowerCase().includes(needle) ||
+      (contact.email ?? '').toLowerCase().includes(needle);
     const matchesFilter =
       filter === 'all' ||
       (filter === 'unread' && contact.unread > 0) ||

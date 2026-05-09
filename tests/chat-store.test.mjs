@@ -89,7 +89,7 @@ test('adds a Gmail display line to older saved contacts without one', () => {
   const state = createInitialState({ contacts: [savedContact], activeContactId: savedContact.id });
 
   assert.equal(state.contacts[0].email, 'paper.friend@gmail.com');
-  assert.equal(state.contacts[0].preview, 'paper.friend@gmail.com');
+  assert.equal(state.contacts[0].preview, 'hi');
 });
 
 test('filters contacts by search term and unread mode', () => {
@@ -167,7 +167,7 @@ test('returns nested settings page options', () => {
   const page = getSettingsPage('privacy');
 
   assert.equal(page.title, 'Privacy');
-  assert.ok(page.items.some((item) => item.label === 'Blocked contacts'));
+  assert.ok(page.items.some((item) => item.label === 'Blocked friends'));
   assert.ok(page.items.some((item) => item.type === 'toggle'));
 });
 
@@ -202,7 +202,7 @@ test('uses AM profile identity in settings and bundled Android app', () => {
   const nameField = page.items.find((item) => item.label === 'Name');
 
   assert.equal(nameField.value, 'Aadhish Mahendran');
-  assert.ok(profileView.points.includes('Aadhish Mahendran'));
+  assert.ok(profileView.points.includes('Your name'));
 
   for (const relativePath of [
     '../src/app.js',
@@ -224,8 +224,8 @@ test('clicking the avatar opens a kid profile ownership page', () => {
     const contents = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
     assert.match(contents, /data-open-profile/);
     assert.match(contents, /function openKidProfilePage\(\)/);
-    assert.match(contents, /Google name/);
-    assert.match(contents, /Google photo/);
+    assert.match(contents, /Safe sign-in name/);
+    assert.match(contents, /Profile photo/);
     assert.match(contents, /Favorite color/);
     assert.match(contents, /Fun bio/);
     assert.match(contents, /id="profileForm"/);
@@ -334,6 +334,26 @@ test('updates authenticated contact online status from Google user records', () 
   assert.equal(updated.contacts[0].onlineStatus, 'online');
 });
 
+test('filters signed-in users locally for automatic discovery', async () => {
+  const store = await import('../src/chat-store.js');
+  assert.equal(typeof store.filterAuthenticatedUsers, 'function');
+
+  const users = [
+    { uid: 'uid-me', email: 'me@gmail.com', displayName: 'Me' },
+    { uid: 'uid-aisha', email: 'aisha.friend@gmail.com', displayName: 'Aisha Friend' },
+    { uid: 'uid-rohan', email: 'rohan.home@gmail.com', displayName: 'Rohan Home' },
+    { uid: 'uid-dupe', email: 'AISHA.friend@gmail.com', displayName: 'Aisha Duplicate' }
+  ];
+
+  const allFriends = store.filterAuthenticatedUsers(users, 'uid-me', '');
+  const byName = store.filterAuthenticatedUsers(users, 'uid-me', 'aisha');
+  const byHiddenEmail = store.filterAuthenticatedUsers(users, 'uid-me', 'home@gmail');
+
+  assert.deepEqual(allFriends.map((user) => user.uid), ['uid-aisha', 'uid-rohan']);
+  assert.deepEqual(byName.map((user) => user.uid), ['uid-aisha']);
+  assert.deepEqual(byHiddenEmail.map((user) => user.uid), ['uid-rohan']);
+});
+
 test('marks the latest chat message as deleted from the chat list', () => {
   const savedContact = buildSavedContact({ id: 'aadhish', name: 'aadhish', preview: 'nvjkfmnb' });
   const state = createInitialState({ contacts: [savedContact], activeContactId: savedContact.id });
@@ -421,26 +441,47 @@ test('new chat flow uses authenticated Google users instead of typed names', () 
     const contents = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
     assert.match(contents, /function renderAuthenticatedUserList\(view\)/);
     assert.match(contents, /data-auth-user-id/);
-    assert.match(contents, /authenticatedUsers\.filter/);
+    assert.match(contents, /filterAuthenticatedUsers/);
     assert.match(contents, /createAuthenticatedContact\(state, selectedUser\)/);
     assert.match(contents, /renderPresenceStatus/);
     assert.match(contents, /🟢 Online/);
     assert.match(contents, /🌙 Away/);
     assert.match(contents, /⚫ Offline/);
-    assert.match(contents, /Find friend by Gmail/);
-    assert.match(contents, /Invite Friend/);
+    assert.match(contents, /Search friends/);
+    assert.match(contents, /Online friends/);
     assert.match(contents, /id="friendSearchForm"/);
-    assert.match(contents, /data-friend-search-submit/);
-    assert.match(contents, /Searching/);
-    assert.match(contents, /Press Search to find or invite this Gmail/);
-    assert.match(contents, /Invite sent \/ ask friend to sign in first\./);
-    assert.match(contents, /!friendSearchQuery\.trim\(\)/);
+    assert.match(contents, /data-friend-search-input/);
+    assert.match(contents, /Everyone who signs in appears here automatically/);
     assert.doesNotMatch(contents, /id="newChatForm"/);
     assert.match(contents, /function getContactEmail\(contact\)/);
     assert.match(contents, /if \(activeAction === 'newChat'\) return;/);
-    assert.match(contents, /contact-avatar-wrap/);
+    assert.doesNotMatch(contents, /data-friend-search-submit/);
+    assert.doesNotMatch(contents, /Find friend by Gmail/);
+    assert.doesNotMatch(contents, /Press Search to find or invite this Gmail/);
+    assert.doesNotMatch(contents, /Invite sent \/ ask friend to sign in first\./);
+    assert.doesNotMatch(contents, /subscribeUserByEmail/);
+    assert.doesNotMatch(contents, /contact-avatar-wrap/);
     assert.doesNotMatch(contents, /value="\$\{escapeAttribute\(newChatDraft\.name\)\}"/);
     assert.doesNotMatch(contents, /placeholder="Aisha Friend"/);
+  }
+});
+
+test('new chat automatically shows signed-in users and search only filters them', () => {
+  for (const relativePath of [
+    '../src/app.js',
+    '../android/app/src/main/assets/www/src/app.js'
+  ]) {
+    const contents = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
+    assert.match(contents, /Search friends/);
+    assert.match(contents, /Online friends/);
+    assert.match(contents, /Ask your friend to sign in once/);
+    assert.match(contents, /filterAuthenticatedUsers/);
+    assert.match(contents, /data-friend-search-input/);
+    assert.doesNotMatch(contents, /subscribeUserByEmail/);
+    assert.doesNotMatch(contents, /Find friend by Gmail/);
+    assert.doesNotMatch(contents, /Search \/ Invite/);
+    assert.doesNotMatch(contents, /Press Search to find or invite this Gmail/);
+    assert.doesNotMatch(contents, /Searching\.\.\./);
   }
 });
 
@@ -458,11 +499,14 @@ test('text inputs keep focus during live sync and settings search typing', () =>
   }
 });
 
-test('chat menu action exposes WhatsApp-style menu items', () => {
-  const view = getActionView('chatMenu');
-
-  assert.ok(view.menuItems.some((item) => item.label === 'Contact info'));
-  assert.ok(view.menuItems.some((item) => item.label === 'Delete chat' && item.danger));
+test('kid shell hides the confusing chat overflow menu', () => {
+  for (const relativePath of [
+    '../index.html',
+    '../android/app/src/main/assets/www/index.html'
+  ]) {
+    const contents = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
+    assert.doesNotMatch(contents, /data-action="chatMenu"/);
+  }
 });
 
 test('media and sharing actions are disabled in kids-safe mode', () => {
@@ -502,6 +546,6 @@ test('settings search returns matching rows that can be opened', () => {
 
   assert.ok(chatResults.some((row) => row.label === 'Chats' && row.page === 'chatsSettings'));
   assert.ok(chatResults.every((row) => `${row.label} ${row.detail}`.toLowerCase().includes('chat')));
-  assert.deepEqual(privacyResults.map((row) => row.label), ['Privacy', 'Help and feedback']);
+  assert.deepEqual(privacyResults.map((row) => row.label), ['Privacy']);
   assert.deepEqual(missingResults, []);
 });

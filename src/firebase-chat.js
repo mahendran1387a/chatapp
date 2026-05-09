@@ -172,28 +172,6 @@ export function subscribeAuthenticatedUsers(onUsers, onError) {
   );
 }
 
-export function subscribeUserByEmail(email, onUsers, onError) {
-  const firebase = ensureFirebase();
-  const normalizedEmail = normalizeEmail(email);
-  if (!firebase || !normalizedEmail) {
-    onUsers([]);
-    return () => {};
-  }
-
-  return onSnapshot(
-    collection(firebase.db, 'users'),
-    (snapshot) => {
-      const users = dedupeGoogleUsers(
-        snapshot.docs
-          .map((item) => ({ uid: item.id, ...item.data() }))
-          .filter((user) => normalizeEmail(user.email) === normalizedEmail)
-      );
-      onUsers(users);
-    },
-    (error) => onError?.(error)
-  );
-}
-
 export function getConversationId(firstUid, secondUid) {
   return [firstUid, secondUid].sort().join('_');
 }

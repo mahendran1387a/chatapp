@@ -28,12 +28,11 @@
             <div class="signed-in-user" aria-live="polite"></div>
             <div class="header-actions">
               <button title="New chat" aria-label="New chat" data-action="newChat">+</button>
-              <button title="Menu" aria-label="Menu" data-action="chatMenu">...</button>
             </div>
           </header>
           <label class="search-box">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 4a5.5 5.5 0 0 1 4.38 8.83l4.15 4.14-1.06 1.06-4.14-4.15A5.5 5.5 0 1 1 9.5 4Zm0 1.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"/></svg>
-            <input id="searchInput" type="search" placeholder="Find a friend or group" />
+            <input id="searchInput" type="search" placeholder="Search friends" />
           </label>
           <div class="filters" aria-label="Chat filters">
             <button class="filter active" data-filter="all">All</button>
@@ -42,7 +41,7 @@
           </div>
           <div class="notice safe-notice" data-notice>
             <strong>Safe chat only.</strong>
-            <span>Text and voice calls with signed-in friends.</span>
+            <span>Text and voice calls with trusted friends.</span>
             <button aria-label="Dismiss notice">x</button>
           </div>
           <div id="chatList" class="list" aria-label="Chats"></div>
@@ -63,9 +62,9 @@
       <section class="content" data-content="chats">
         <div id="emptyState" class="empty-state hidden">
           <div class="empty-illustration">KW</div>
-          <h2>Kids WhatsApp on Web</h2>
-          <p>Choose a signed-in friend and start a kind conversation.</p>
-          <small>Google sign-in keeps names real.</small>
+          <h2>Kids WhatsApp</h2>
+          <p>Choose a friend and start a kind conversation.</p>
+          <small>Safe chat for kids.</small>
         </div>
         <article id="conversation" class="conversation"></article>
       </section>
