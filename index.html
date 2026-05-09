@@ -14,6 +14,9 @@
           <span class="badge">8</span>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H7l-3 3V5Zm4 4h8v2H8V9Zm0 4h6v2H8v-2Z"/></svg>
         </button>
+        <button class="rail-button" data-section="friends" title="Friends &amp; Invites" aria-label="Friends and Invites">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8Zm8.5 1a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7ZM2 20a6 6 0 0 1 12 0v1H2v-1Zm12.6 1a7.9 7.9 0 0 0-2.1-5.3A5 5 0 0 1 22 18v3h-7.4Z"/></svg>
+        </button>
         <div class="rail-spacer"></div>
         <button class="rail-button" data-section="settings" title="Settings" aria-label="Settings">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m19.4 13.5.1-1.5-.1-1.5 2-1.55-2-3.46-2.45 1a8 8 0 0 0-2.6-1.5L14 2.4h-4l-.35 2.6a8 8 0 0 0-2.6 1.5l-2.45-1-2 3.46 2 1.55L4.5 12l.1 1.5-2 1.55 2 3.46 2.45-1a8 8 0 0 0 2.6 1.5l.35 2.6h4l.35-2.6a8 8 0 0 0 2.6-1.5l2.45 1 2-3.46-2-1.55ZM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z"/></svg>
@@ -27,7 +30,7 @@
             <h1>Kids WhatsApp</h1>
             <div class="signed-in-user" aria-live="polite"></div>
             <div class="header-actions">
-              <button title="New chat" aria-label="New chat" data-action="newChat">+</button>
+              <button title="Friends &amp; Invites" aria-label="Friends and Invites" data-jump-section="friends">+</button>
             </div>
           </header>
           <label class="search-box">
@@ -45,6 +48,13 @@
             <button aria-label="Dismiss notice">x</button>
           </div>
           <div id="chatList" class="list" aria-label="Chats"></div>
+        </section>
+
+        <section class="panel friends-panel hidden" data-panel="friends">
+          <header class="panel-header">
+            <h1>Friends &amp; Invites</h1>
+          </header>
+          <div class="friends-scroll" data-friends-invites></div>
         </section>
 
         <section class="panel settings-panel hidden" data-panel="settings">

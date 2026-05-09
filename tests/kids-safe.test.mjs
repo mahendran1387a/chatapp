@@ -12,13 +12,16 @@ const appFiles = [
   '../android/app/src/main/assets/www/src/app.js'
 ];
 
-test('kids-safe shell exposes only chat and settings navigation', () => {
+test('kids-safe shell exposes chat, friends, and settings navigation', () => {
   for (const relativePath of webFiles) {
     const contents = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
 
     assert.match(contents, /Kids WhatsApp/);
     assert.match(contents, /data-section="chats"/);
+    assert.match(contents, /data-section="friends"/);
     assert.match(contents, /data-section="settings"/);
+    assert.match(contents, /data-panel="friends"/);
+    assert.match(contents, /Friends &amp; Invites/);
     assert.doesNotMatch(contents, /data-section="status"/);
     assert.doesNotMatch(contents, /data-section="channels"/);
     assert.doesNotMatch(contents, /data-section="communities"/);

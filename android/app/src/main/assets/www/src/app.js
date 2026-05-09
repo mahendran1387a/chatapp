@@ -261,6 +261,7 @@ const railButtons = document.querySelectorAll('.rail-button[data-section]');
 const panels = document.querySelectorAll('[data-panel]');
 const appShell = document.querySelector('.app-shell');
 const signedInUser = document.querySelector('.signed-in-user');
+const friendsInvitesPanel = document.querySelector('[data-friends-invites]');
 const authGate = document.createElement('section');
 authGate.className = 'auth-gate';
 authGate.setAttribute('aria-live', 'polite');
@@ -675,7 +676,7 @@ function renderPendingFamilyRows() {
     : '<p class="empty-copy">No pending family approvals right now.</p>';
   return `
     <div class="auth-user-list pending-family-list">
-      <h3 class="user-list-heading">Approve Family</h3>
+      <h3 class="user-list-heading">Pending Invites</h3>
       ${rows}
     </div>
   `;
@@ -711,6 +712,19 @@ function renderFriendSearchForm(autoListMessage) {
       ${renderFriendSearchRows(autoListMessage)}
     </div>
     ${renderPendingFamilyRows()}
+  `;
+}
+
+function renderFriendsInvitesPanel() {
+  if (!friendsInvitesPanel) return;
+  friendsInvitesPanel.innerHTML = `
+    <div class="friends-invites-shell">
+      <div class="invite-friend-intro">
+        <h3>Friends & Invites</h3>
+        <p>Signed-in users from your family list appear here automatically after approval.</p>
+      </div>
+      ${renderFriendSearchForm('No approved family yet. Use Invite Family, then approve them after they sign in.')}
+    </div>
   `;
 }
 
@@ -1158,7 +1172,7 @@ function renderStatusItem(status) {
 }
 
 function renderSection() {
-  if (!['chats', 'settings'].includes(state.activeSection)) {
+  if (!['chats', 'friends', 'settings'].includes(state.activeSection)) {
     state = switchSection(state, 'chats');
   }
   document.body.classList.toggle(
@@ -1189,6 +1203,14 @@ function renderSection() {
     emptyState.innerHTML = `
       <div class="settings-illustration"></div>
       <h2>Settings</h2>
+    `;
+  } else if (state.activeSection === 'friends') {
+    emptyState.classList.remove('hidden');
+    emptyState.innerHTML = `
+      <div class="detail-illustration"></div>
+      <h2>Friends & Invites</h2>
+      <p>Pick an approved friend from the left menu to start chatting.</p>
+      <small>Only signed-in, approved users can chat.</small>
     `;
   } else {
     conversation.classList.remove('hidden');
@@ -1253,6 +1275,7 @@ function renderAll() {
   renderSignedInUser();
   if (!currentAuthUser) return;
   if (renderFamilyAccessGate()) return;
+  renderFriendsInvitesPanel();
   renderSettingsPanel();
   renderSection();
   renderChats();

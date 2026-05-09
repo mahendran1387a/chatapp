@@ -155,6 +155,13 @@ test('switches to settings section', () => {
   assert.equal(updated.activeSection, 'settings');
 });
 
+test('switches to friends and invites section', () => {
+  const state = createInitialState();
+  const updated = switchSection(state, 'friends');
+
+  assert.equal(updated.activeSection, 'friends');
+});
+
 test('disabled privacy-risk buttons return kids-safe detail content', () => {
   const view = getActionView('catalog');
 
@@ -440,6 +447,7 @@ test('new chat flow uses authenticated Google users instead of typed names', () 
   ]) {
     const contents = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
     assert.match(contents, /function renderAuthenticatedUserList\(view\)/);
+    assert.match(contents, /function renderFriendsInvitesPanel\(\)/);
     assert.match(contents, /data-auth-user-id/);
     assert.match(contents, /filterAuthenticatedUsers/);
     assert.match(contents, /createAuthenticatedContact\(state, selectedUser\)/);
@@ -452,6 +460,7 @@ test('new chat flow uses authenticated Google users instead of typed names', () 
     assert.match(contents, /id="friendSearchForm"/);
     assert.match(contents, /data-friend-search-input/);
     assert.match(contents, /Only approved family and friends can chat here/);
+    assert.match(contents, /Friends & Invites/);
     assert.doesNotMatch(contents, /id="newChatForm"/);
     assert.match(contents, /function getContactEmail\(contact\)/);
     assert.match(contents, /if \(activeAction === 'newChat'\) return;/);

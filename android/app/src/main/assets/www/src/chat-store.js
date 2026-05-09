@@ -334,7 +334,7 @@ const disabledForKidsActionIds = new Set([
   'chatSearch'
 ]);
 
-const allowedSections = new Set(['chats', 'settings']);
+const allowedSections = new Set(['chats', 'friends', 'settings']);
 
 const settingsPages = {
   profile: {

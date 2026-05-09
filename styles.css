@@ -460,9 +460,14 @@ img.signed-in-avatar {
 }
 
 .tool-scroll,
-.settings-scroll {
+.settings-scroll,
+.friends-scroll {
   overflow-y: auto;
   padding-bottom: 30px;
+}
+
+.friends-invites-shell {
+  padding: 4px 18px 28px;
 }
 
 .tool-scroll h2 {
@@ -2433,6 +2438,7 @@ img.profile-edit-photo {
 
   .tool-scroll,
   .settings-scroll,
+  .friends-scroll,
   .list,
   .status-list,
   .channel-list {
