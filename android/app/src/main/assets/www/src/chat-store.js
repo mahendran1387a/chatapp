@@ -268,9 +268,9 @@ const actionViews = {
   },
   profile: {
     title: 'Profile',
-    body: 'Update your name, profile photo, and about text.',
+    body: 'See your Google name and photo, then add a friendly status, favorite color, and fun bio.',
     primaryAction: 'Edit profile',
-    points: ['Aadhish Mahendran', 'About', 'Profile photo']
+    points: ['Aadhish Mahendran', 'Google photo', 'Favorite color', 'Fun bio']
   },
   account: {
     title: 'Account',
@@ -340,11 +340,16 @@ const settingsPages = {
   profile: {
     title: 'Profile',
     items: [
-      { type: 'input', label: 'Name', value: 'Aadhish Mahendran', detail: 'This is not your username or PIN.' },
-      { type: 'input', label: 'Email', value: '', detail: 'Use a demo email address for this local app.' },
-      { type: 'password', label: 'Password', value: '', detail: 'Stored only in this page while the demo is open.' },
-      { type: 'input', label: 'About', value: 'Available', detail: 'People can see this under your profile.' },
-      { type: 'action', label: 'Profile photo', detail: 'Tap to choose a new photo.' }
+      { type: 'readonly', label: 'Name', value: 'Aadhish Mahendran', detail: 'Google name keeps your identity real.' },
+      { type: 'readonly', label: 'Photo', value: '', detail: 'Google photo from your signed-in account.' },
+      { type: 'input', label: 'Status', value: 'Ready to chat', detail: 'A short mood your friends can see.' },
+      { type: 'input', label: 'Favorite color', value: 'Purple', detail: 'Pick a color that feels like you.' },
+      {
+        type: 'textarea',
+        label: 'Fun bio',
+        value: 'I like games, space, and kind chats.',
+        detail: 'Share one safe, friendly sentence about yourself.'
+      }
     ]
   },
   chooseNotifications: {
@@ -519,7 +524,7 @@ const settingDangerViews = {
 };
 
 const settingsSearchRows = [
-  { label: 'Profile', detail: 'Name, photo, email, password, about', page: 'profile' },
+  { label: 'Profile', detail: 'Name, photo, status, favorite color, fun bio', page: 'profile' },
   { label: 'Choose your notifications', detail: 'Messages, groups, status notifications', page: 'chooseNotifications' },
   { label: 'Business tools', detail: 'Quick replies, labels, catalog', section: 'business' },
   { label: 'Account', detail: 'Security notifications, account info, two-step verification', page: 'account' },

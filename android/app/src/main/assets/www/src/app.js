@@ -34,6 +34,7 @@ import {
 const savedChatStorageKey = 'chatapp.savedChats.v1';
 const clientIdStorageKey = 'chatapp.clientId.v1';
 const newChatDraftStorageKey = 'chatapp.newChatDraft.v1';
+const profileStorageKey = 'kidswhatsapp.profile.v1';
 const serverChatStorageUrl = '/api/chats';
 const syncIntervalMs = 1500;
 let lastChatSnapshot = '';
@@ -124,6 +125,44 @@ function clearNewChatDraft() {
   }
 }
 
+function loadProfileValues() {
+  const defaults = {
+    Name: 'Aadhish Mahendran',
+    Photo: '',
+    Status: 'Ready to chat',
+    'Favorite color': 'Purple',
+    'Fun bio': 'I like games, space, and kind chats.'
+  };
+  try {
+    const saved = window.localStorage.getItem(profileStorageKey);
+    const parsed = saved ? JSON.parse(saved) : {};
+    return {
+      ...defaults,
+      Status: typeof parsed.Status === 'string' ? parsed.Status : defaults.Status,
+      'Favorite color':
+        typeof parsed['Favorite color'] === 'string' ? parsed['Favorite color'] : defaults['Favorite color'],
+      'Fun bio': typeof parsed['Fun bio'] === 'string' ? parsed['Fun bio'] : defaults['Fun bio']
+    };
+  } catch {
+    return defaults;
+  }
+}
+
+function saveProfileValues() {
+  try {
+    window.localStorage.setItem(
+      profileStorageKey,
+      JSON.stringify({
+        Status: profileValues.Status,
+        'Favorite color': profileValues['Favorite color'],
+        'Fun bio': profileValues['Fun bio']
+      })
+    );
+  } catch {
+    // Browser storage can be unavailable in incognito.
+  }
+}
+
 function saveLocalChatState(payload) {
   window.localStorage.setItem(savedChatStorageKey, JSON.stringify(payload));
 }
@@ -178,12 +217,7 @@ let currentPresenceStatus = '';
 let isLoggedOut = false;
 let mobileConversationOpen = false;
 const settingSwitches = new Map();
-const profileValues = {
-  Name: 'Aadhish Mahendran',
-  Email: '',
-  Password: '',
-  About: 'Available'
-};
+const profileValues = loadProfileValues();
 const businessProfileValues = {
   'Business name': 'Sangavi Store',
   Username: '',
@@ -193,6 +227,12 @@ const businessProfileValues = {
 const createdChannelValues = {
   'Channel name': '',
   Description: ''
+};
+const profileOwnershipLabels = {
+  googleName: 'Google name',
+  googlePhoto: 'Google photo',
+  favoriteColor: 'Favorite color',
+  funBio: 'Fun bio'
 };
 const statusValues = {
   'Status text': '',
@@ -277,6 +317,14 @@ function getUserAvatar(user) {
   return initials(getUserName(user)) || 'GU';
 }
 
+function renderUserPhoto(user, className) {
+  const photoUrl = user?.photoURL ?? '';
+  if (photoUrl) {
+    return `<img class="${className}" src="${escapeAttribute(photoUrl)}" alt="${escapeAttribute(getUserName(user))} Google photo" />`;
+  }
+  return `<span class="${className}">${escapeHtml(getUserAvatar(user))}</span>`;
+}
+
 function getPresenceStatusLabel(onlineStatus) {
   if (onlineStatus === 'online') return '🟢 Online';
   if (onlineStatus === 'away') return '🌙 Away';
@@ -337,11 +385,19 @@ function renderSignedInUser() {
   if (!currentAuthUser) {
     signedInUser.innerHTML = '';
     signedInUser.classList.add('hidden');
+    signedInUser.removeAttribute('data-open-profile');
+    signedInUser.removeAttribute('role');
+    signedInUser.removeAttribute('tabindex');
+    signedInUser.removeAttribute('aria-label');
     return;
   }
   signedInUser.classList.remove('hidden');
+  signedInUser.setAttribute('data-open-profile', '');
+  signedInUser.setAttribute('role', 'button');
+  signedInUser.setAttribute('tabindex', '0');
+  signedInUser.setAttribute('aria-label', 'Open profile page');
   signedInUser.innerHTML = `
-    <span class="signed-in-avatar">${escapeHtml(getUserAvatar(currentAuthUser))}</span>
+    ${renderUserPhoto(currentAuthUser, 'signed-in-avatar')}
     <span>
       <strong>${escapeHtml(getUserName(currentAuthUser))}</strong>
       <small>${escapeHtml(currentAuthUser?.email ?? '')}</small>
@@ -689,6 +745,9 @@ function renderSettingsPage(pageId) {
 }
 
 function renderProfileSettingsPage(page) {
+  const googleName = getUserName(currentAuthUser);
+  const googleEmail = currentAuthUser?.email ?? 'Google account';
+  const photoSummary = currentAuthUser?.photoURL ? 'Google photo connected' : `${getUserAvatar(currentAuthUser)} initials`;
   return `
     <div class="nested-settings">
       <header class="nested-header">
@@ -696,9 +755,35 @@ function renderProfileSettingsPage(page) {
         <h2>${page.title}</h2>
       </header>
       <form class="profile-form" id="profileForm">
-        <div class="profile-edit-photo">AM</div>
+        <div class="profile-ownership-header">
+          ${renderUserPhoto(currentAuthUser, 'profile-edit-photo')}
+          <strong>${escapeHtml(googleName)}</strong>
+          <small>${escapeHtml(googleEmail)}</small>
+        </div>
         ${page.items
           .map((item) => {
+            if (item.type === 'readonly') {
+              const value = item.label === 'Name' ? googleName : photoSummary;
+              const sourceLabel =
+                item.label === 'Name' ? profileOwnershipLabels.googleName : profileOwnershipLabels.googlePhoto;
+              return `
+                <div class="profile-readonly-card" aria-label="${escapeAttribute(sourceLabel)}">
+                  <span>${escapeHtml(item.label)}</span>
+                  <strong>${escapeHtml(value)}</strong>
+                  <small>${escapeHtml(item.detail)}</small>
+                </div>
+              `;
+            }
+            if (item.type === 'textarea') {
+              const value = profileValues[item.label] ?? item.value ?? '';
+              return `
+                <label class="profile-field">
+                  <span>${escapeHtml(item.label)}</span>
+                  <textarea name="${escapeAttribute(item.label)}" rows="3" maxlength="180">${escapeHtml(value)}</textarea>
+                  <small>${escapeHtml(item.detail)}</small>
+                </label>
+              `;
+            }
             if (item.type === 'action') {
               return `
                 <button type="button" class="nested-row" data-setting-item="profile-photo" data-setting-type="action" data-setting-label="${item.label}">
@@ -711,9 +796,9 @@ function renderProfileSettingsPage(page) {
             const value = profileValues[item.label] ?? item.value ?? '';
             return `
               <label class="profile-field">
-                <span>${item.label}</span>
-                <input name="${item.label}" type="${inputType}" value="${value}" autocomplete="${item.type === 'password' ? 'new-password' : 'off'}" placeholder="${item.label === 'Email' ? 'example@gmail.com' : ''}" />
-                <small>${item.detail}</small>
+                <span>${escapeHtml(item.label)}</span>
+                <input name="${escapeAttribute(item.label)}" type="${inputType}" value="${escapeAttribute(value)}" autocomplete="${item.type === 'password' ? 'new-password' : 'off'}" placeholder="${item.label === 'Email' ? 'example@gmail.com' : ''}" />
+                <small>${escapeHtml(item.detail)}</small>
               </label>
             `;
           })
@@ -765,9 +850,13 @@ function renderSettingsScrollableContent() {
         <span><strong>Choose your notifications</strong><small>Get notifications for chats, groups, and calls. <b>Choose now</b></small></span>
         <button data-settings-dismiss aria-label="Dismiss settings notice">x</button>
       </div>
-      <button class="profile-row" data-auth-logout>
-        <span class="profile-photo">${escapeHtml(getUserAvatar(currentAuthUser))}</span>
-        <strong>${escapeHtml(getUserName(currentAuthUser))}</strong>
+      <button class="profile-row" data-open-profile>
+        ${renderUserPhoto(currentAuthUser, 'profile-photo')}
+        <span>
+          <strong>${escapeHtml(getUserName(currentAuthUser))}</strong>
+          <small>${escapeHtml(currentAuthUser?.email ?? 'Google account')}</small>
+          <small>${escapeHtml(profileValues.Status || 'Ready to chat')}</small>
+        </span>
       </button>
       <div class="settings-list">
         <button class="settings-row active" data-settings-page="account">
@@ -1064,6 +1153,15 @@ function renderSettingsPanel() {
     return;
   }
   settingsPanel.innerHTML = activeSettingsPage ? renderSettingsPage(activeSettingsPage) : renderSettingsHome();
+}
+
+function openKidProfilePage() {
+  if (!requireAuth()) return;
+  activeAction = null;
+  activeSettingsPage = 'profile';
+  mobileConversationOpen = false;
+  state = switchSection(state, 'settings');
+  renderAll();
 }
 
 function subscribeActiveConversation() {
@@ -1545,6 +1643,11 @@ document.addEventListener('click', (event) => {
     return;
   }
 
+  if (event.target.closest('[data-open-profile]')) {
+    openKidProfilePage();
+    return;
+  }
+
   if (event.target.closest('[data-auth-logout]')) {
     updateCurrentPresence('offline');
     logoutGoogleUser().catch((error) => showToast(error.message));
@@ -1773,6 +1876,11 @@ document.addEventListener('input', (event) => {
 });
 
 document.addEventListener('keydown', (event) => {
+  if ((event.key === 'Enter' || event.key === ' ') && event.target.closest('[data-open-profile]')) {
+    event.preventDefault();
+    openKidProfilePage();
+    return;
+  }
   if (event.key === 'Escape') {
     closeContactMenu();
     closeMessageMenu();
@@ -1917,11 +2025,12 @@ document.addEventListener('submit', (event) => {
   for (const [key, value] of formData.entries()) {
     profileValues[key] = String(value);
   }
-  const email = profileValues.Email.trim();
+  const email = typeof profileValues.Email === 'string' ? profileValues.Email.trim() : '';
   if (email && !email.includes('@')) {
     showToast('Enter a valid email address');
     return;
   }
+  saveProfileValues();
   showToast('Profile saved');
   renderAll();
 });

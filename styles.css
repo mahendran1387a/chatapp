@@ -166,6 +166,13 @@ button {
   border: 1px solid #d8efe9;
   border-radius: 8px;
   background: #f0fbf8;
+  cursor: pointer;
+}
+
+.signed-in-user:hover,
+.signed-in-user:focus-visible {
+  background: #e0f7ef;
+  outline: 2px solid rgba(0, 168, 132, 0.2);
 }
 
 .signed-in-user span:last-child {
@@ -199,6 +206,10 @@ button {
   color: #ffffff;
   background: #00a884;
   font-weight: 800;
+}
+
+img.signed-in-avatar {
+  object-fit: cover;
 }
 
 .panel {
@@ -639,6 +650,27 @@ button {
   background: linear-gradient(135deg, #d89743, #6a963c);
   border-radius: 50%;
   font-weight: 700;
+}
+
+img.profile-photo {
+  object-fit: cover;
+}
+
+.profile-row span:last-child {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.profile-row strong,
+.profile-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-row small {
+  color: #54656f;
 }
 
 .settings-list {
@@ -1634,6 +1666,51 @@ button {
   font-weight: 700;
 }
 
+.profile-ownership-header {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 10px 0 8px;
+  text-align: center;
+}
+
+.profile-ownership-header strong {
+  font-size: 20px;
+}
+
+.profile-ownership-header small {
+  color: #54656f;
+}
+
+img.profile-edit-photo {
+  object-fit: cover;
+}
+
+.profile-readonly-card {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  background: linear-gradient(135deg, #f8edff, #e5fbff);
+  border: 1px solid #d8efe9;
+  border-radius: 10px;
+}
+
+.profile-readonly-card span {
+  color: #087a55;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.profile-readonly-card strong {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.profile-readonly-card small {
+  color: #54656f;
+  line-height: 1.35;
+}
+
 .profile-field {
   display: grid;
   gap: 7px;
@@ -1645,10 +1722,10 @@ button {
   font-weight: 700;
 }
 
-.profile-field input {
+.profile-field input,
+.profile-field textarea {
   width: 100%;
   min-width: 0;
-  height: 42px;
   padding: 0 12px;
   color: var(--text);
   background: #fff;
@@ -1657,7 +1734,20 @@ button {
   outline: 0;
 }
 
-.profile-field input:focus {
+.profile-field input {
+  height: 42px;
+}
+
+.profile-field textarea {
+  min-height: 86px;
+  padding-top: 10px;
+  resize: vertical;
+  font: inherit;
+  line-height: 1.4;
+}
+
+.profile-field input:focus,
+.profile-field textarea:focus {
   border-color: var(--green);
   box-shadow: 0 0 0 2px rgba(0, 168, 132, 0.12);
 }

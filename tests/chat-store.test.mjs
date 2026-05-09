@@ -186,11 +186,14 @@ test('logout danger action exposes a real confirmation flow', () => {
   assert.equal(view.finalAction, 'logout');
 });
 
-test('profile settings include editable account fields', () => {
+test('profile settings include kid ownership fields', () => {
   const page = getSettingsPage('profile');
 
-  assert.ok(page.items.some((item) => item.type === 'input' && item.label === 'Email'));
-  assert.ok(page.items.some((item) => item.type === 'password' && item.label === 'Password'));
+  assert.ok(page.items.some((item) => item.type === 'readonly' && item.label === 'Name'));
+  assert.ok(page.items.some((item) => item.type === 'readonly' && item.label === 'Photo'));
+  assert.ok(page.items.some((item) => item.type === 'input' && item.label === 'Status'));
+  assert.ok(page.items.some((item) => item.type === 'input' && item.label === 'Favorite color'));
+  assert.ok(page.items.some((item) => item.type === 'textarea' && item.label === 'Fun bio'));
 });
 
 test('uses AM profile identity in settings and bundled Android app', () => {
@@ -210,6 +213,22 @@ test('uses AM profile identity in settings and bundled Android app', () => {
     const contents = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
     assert.doesNotMatch(contents, /Sangavi Mahendran/);
     assert.doesNotMatch(contents, /profile-(?:edit-)?photo">SM/);
+  }
+});
+
+test('clicking the avatar opens a kid profile ownership page', () => {
+  for (const relativePath of [
+    '../src/app.js',
+    '../android/app/src/main/assets/www/src/app.js'
+  ]) {
+    const contents = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
+    assert.match(contents, /data-open-profile/);
+    assert.match(contents, /function openKidProfilePage\(\)/);
+    assert.match(contents, /Google name/);
+    assert.match(contents, /Google photo/);
+    assert.match(contents, /Favorite color/);
+    assert.match(contents, /Fun bio/);
+    assert.match(contents, /id="profileForm"/);
   }
 });
 
