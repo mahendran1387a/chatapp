@@ -88,6 +88,7 @@ createServer(async (request, response) => {
   }
 
   response.writeHead(200, {
+    'Cache-Control': 'no-store, max-age=0',
     'Content-Type': types[extname(filePath)] ?? 'application/octet-stream',
     'Referrer-Policy': 'no-referrer',
     'X-Content-Type-Options': 'nosniff'
