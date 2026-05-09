@@ -535,9 +535,10 @@ function renderAuthenticatedUserRows(emptyMessage) {
 function renderFriendSearchRows() {
   const query = friendSearchQuery.trim();
   if (!query) return '<p class="empty-copy">Type your friend Gmail to find them.</p>';
+  if (friendSearchStatus === 'idle') return '<p class="empty-copy">Press Search to find or invite this Gmail.</p>';
   if (friendSearchStatus === 'loading') return '<p class="empty-copy">Searching...</p>';
   const users = friendSearchResults.filter((user) => user.uid !== currentAuthUser?.uid);
-  if (!users.length) return '<p class="empty-copy">Friend not found. Ask them to sign in first.</p>';
+  if (!users.length) return '<p class="empty-copy invite-copy">Invite sent / ask friend to sign in first.</p>';
   const countText = users.length === 1 ? 'Friend found' : `${users.length} friends found`;
   return `
     <p class="empty-copy found-copy">${countText}. Tap the friend to start chatting.</p>
@@ -552,18 +553,22 @@ function renderFriendSearchRows() {
 
 function renderFriendSearchForm(autoListMessage) {
   return `
+    <div class="invite-friend-intro">
+      <h3>Invite Friend</h3>
+      <p>Enter a Gmail address. If your friend signed in before, you can start chatting right away.</p>
+    </div>
     <form id="friendSearchForm" class="friend-search-form">
       <label class="friend-search">
         <span>Find friend by Gmail</span>
         <input id="friendSearchInput" name="friendEmail" type="email" autocomplete="off" value="${escapeAttribute(friendSearchQuery)}" placeholder="friend@gmail.com" />
       </label>
-      <button class="friend-search-button" type="submit" data-friend-search-submit>Search</button>
+      <button class="friend-search-button" type="submit" data-friend-search-submit>Search / Invite</button>
     </form>
     <div class="auth-user-list friend-search-results">
       ${renderFriendSearchRows()}
     </div>
     ${!friendSearchQuery.trim()
-      ? `<div class="auth-user-list">${renderAuthenticatedUserRows(autoListMessage)}</div>`
+      ? `<div class="auth-user-list"><h3 class="user-list-heading">Signed-in friends</h3>${renderAuthenticatedUserRows(autoListMessage)}</div>`
       : ''}
   `;
 }

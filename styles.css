@@ -1984,6 +1984,31 @@ button {
   margin: 8px auto 0;
 }
 
+.invite-friend-intro {
+  width: min(575px, 100%);
+  margin: 12px auto 0;
+  text-align: left;
+}
+
+.invite-friend-intro h3,
+.user-list-heading {
+  margin: 0;
+  color: #111b21;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.invite-friend-intro p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.35;
+}
+
+.user-list-heading {
+  margin-bottom: 2px;
+}
+
 .friend-search span {
   color: #008069;
   font-size: 0.86rem;
@@ -2060,6 +2085,11 @@ button {
 
 .found-copy {
   color: #008069;
+  font-weight: 700;
+}
+
+.invite-copy {
+  color: #8a6a00;
   font-weight: 700;
 }
 

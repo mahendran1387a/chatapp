@@ -381,11 +381,13 @@ test('new chat flow uses authenticated Google users instead of typed names', () 
     assert.match(contents, /authenticatedUsers\.filter/);
     assert.match(contents, /createAuthenticatedContact\(state, selectedUser\)/);
     assert.match(contents, /Find friend by Gmail/);
+    assert.match(contents, /Invite Friend/);
     assert.match(contents, /id="friendSearchForm"/);
     assert.match(contents, /data-friend-search-submit/);
     assert.match(contents, /Searching/);
+    assert.match(contents, /Press Search to find or invite this Gmail/);
+    assert.match(contents, /Invite sent \/ ask friend to sign in first\./);
     assert.match(contents, /!friendSearchQuery\.trim\(\)/);
-    assert.match(contents, /Friend not found\. Ask them to sign in first\./);
     assert.doesNotMatch(contents, /id="newChatForm"/);
     assert.match(contents, /function getContactEmail\(contact\)/);
     assert.match(contents, /if \(activeAction === 'newChat'\) return;/);
