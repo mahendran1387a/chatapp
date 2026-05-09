@@ -1972,8 +1972,16 @@ button {
   display: grid;
   gap: 7px;
   width: min(575px, 100%);
-  margin-top: 8px;
   text-align: left;
+}
+
+.friend-search-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+  width: min(575px, 100%);
+  margin: 8px auto 0;
 }
 
 .friend-search span {
@@ -1997,6 +2005,22 @@ button {
   border-color: #00a884;
   box-shadow: 0 0 0 3px rgba(0, 168, 132, 0.14);
   outline: none;
+}
+
+.friend-search-button {
+  min-height: 46px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 22px;
+  color: #ffffff;
+  background: #008069;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.friend-search-button:hover {
+  background: #017561;
 }
 
 .auth-user-row {
@@ -2032,6 +2056,21 @@ button {
 .auth-user-row small,
 .empty-copy {
   color: var(--muted);
+}
+
+.found-copy {
+  color: #008069;
+  font-weight: 700;
+}
+
+@media (max-width: 560px) {
+  .friend-search-form {
+    grid-template-columns: 1fr;
+  }
+
+  .friend-search-button {
+    width: 100%;
+  }
 }
 
 @media (max-width: 1180px) {

@@ -538,12 +538,34 @@ function renderFriendSearchRows() {
   if (friendSearchStatus === 'loading') return '<p class="empty-copy">Searching...</p>';
   const users = friendSearchResults.filter((user) => user.uid !== currentAuthUser?.uid);
   if (!users.length) return '<p class="empty-copy">Friend not found. Ask them to sign in first.</p>';
-  return users.map((user) => `
-    <button class="auth-user-row" type="button" data-auth-user-id="${user.uid}">
-      ${renderUserPhoto(user, 'small')}
-      <span><strong>${escapeHtml(getUserName(user))}</strong><small>${escapeHtml(user.email ?? '')}</small></span>
-    </button>
-  `).join('');
+  const countText = users.length === 1 ? 'Friend found' : `${users.length} friends found`;
+  return `
+    <p class="empty-copy found-copy">${countText}. Tap the friend to start chatting.</p>
+    ${users.map((user) => `
+      <button class="auth-user-row" type="button" data-auth-user-id="${user.uid}">
+        ${renderUserPhoto(user, 'small')}
+        <span><strong>${escapeHtml(getUserName(user))}</strong><small>${escapeHtml(user.email ?? '')}</small></span>
+      </button>
+    `).join('')}
+  `;
+}
+
+function renderFriendSearchForm(autoListMessage) {
+  return `
+    <form id="friendSearchForm" class="friend-search-form">
+      <label class="friend-search">
+        <span>Find friend by Gmail</span>
+        <input id="friendSearchInput" name="friendEmail" type="email" autocomplete="off" value="${escapeAttribute(friendSearchQuery)}" placeholder="friend@gmail.com" />
+      </label>
+      <button class="friend-search-button" type="submit" data-friend-search-submit>Search</button>
+    </form>
+    <div class="auth-user-list friend-search-results">
+      ${renderFriendSearchRows()}
+    </div>
+    ${!friendSearchQuery.trim()
+      ? `<div class="auth-user-list">${renderAuthenticatedUserRows(autoListMessage)}</div>`
+      : ''}
+  `;
 }
 
 function renderAuthenticatedUserList(view) {
@@ -554,16 +576,7 @@ function renderAuthenticatedUserList(view) {
       <div class="detail-illustration"></div>
       <h2>${view.title}</h2>
       <p>Choose a Google signed-in user to start a chat. Names and emails come from Google only.</p>
-      <label class="friend-search">
-        <span>Find friend by Gmail</span>
-        <input id="friendSearchInput" type="email" autocomplete="off" value="${escapeAttribute(friendSearchQuery)}" placeholder="friend@gmail.com" />
-      </label>
-      <div class="auth-user-list friend-search-results">
-        ${renderFriendSearchRows()}
-      </div>
-      ${!friendSearchQuery.trim()
-        ? `<div class="auth-user-list">${renderAuthenticatedUserRows('No Google signed-in users were found yet. Ask your friend to sign in once, then they will appear here automatically.')}</div>`
-        : ''}
+      ${renderFriendSearchForm('No Google signed-in users were found yet. Ask your friend to sign in once, then they will appear here automatically.')}
     </div>
   `;
 }
@@ -1319,16 +1332,7 @@ function showActionDialog(view) {
           <div class="detail-illustration"></div>
           <h2>${view.title}</h2>
           <p>Choose a Google signed-in user to start a chat.</p>
-          <label class="friend-search">
-            <span>Find friend by Gmail</span>
-            <input id="friendSearchInput" type="email" autocomplete="off" value="${escapeAttribute(friendSearchQuery)}" placeholder="friend@gmail.com" />
-          </label>
-          <div class="auth-user-list friend-search-results">
-            ${renderFriendSearchRows()}
-          </div>
-          ${!friendSearchQuery.trim()
-            ? `<div class="auth-user-list">${renderAuthenticatedUserRows('No Google signed-in users were found yet.')}</div>`
-            : ''}
+          ${renderFriendSearchForm('No Google signed-in users were found yet.')}
         </div>
       </section>
     `;
@@ -1682,23 +1686,9 @@ document.addEventListener('input', (event) => {
   if (friendSearchInput) {
     friendSearchQuery = friendSearchInput.value;
     friendSearchResults = [];
-    friendSearchStatus = friendSearchQuery.trim() ? 'loading' : 'idle';
+    friendSearchStatus = 'idle';
     unsubscribeFriendSearch();
     const results = document.querySelector('.friend-search-results');
-    if (!friendSearchQuery.trim()) {
-      if (results) results.innerHTML = renderFriendSearchRows();
-      return;
-    }
-    unsubscribeFriendSearch = subscribeUserByEmail(
-      friendSearchQuery,
-      (users) => {
-        friendSearchResults = users;
-        friendSearchStatus = 'done';
-        const nextResults = document.querySelector('.friend-search-results');
-        if (nextResults) nextResults.innerHTML = renderFriendSearchRows();
-      },
-      (error) => showToast(error.message)
-    );
     if (results) results.innerHTML = renderFriendSearchRows();
     return;
   }
@@ -1724,6 +1714,40 @@ document.addEventListener('keydown', (event) => {
 });
 
 document.addEventListener('submit', (event) => {
+  const friendSearchForm = event.target.closest('#friendSearchForm');
+  if (friendSearchForm) {
+    event.preventDefault();
+    const formData = new FormData(friendSearchForm);
+    friendSearchQuery = String(formData.get('friendEmail') ?? '').trim();
+    friendSearchResults = [];
+    friendSearchStatus = friendSearchQuery.trim() ? 'loading' : 'idle';
+    unsubscribeFriendSearch();
+    const input = friendSearchForm.querySelector('#friendSearchInput');
+    if (input) input.value = friendSearchQuery;
+    const results = document.querySelector('.friend-search-results');
+    if (!friendSearchQuery.trim()) {
+      if (results) results.innerHTML = renderFriendSearchRows();
+      return;
+    }
+    if (results) results.innerHTML = renderFriendSearchRows();
+    unsubscribeFriendSearch = subscribeUserByEmail(
+      friendSearchQuery,
+      (users) => {
+        friendSearchResults = users;
+        friendSearchStatus = 'done';
+        const nextResults = document.querySelector('.friend-search-results');
+        if (nextResults) nextResults.innerHTML = renderFriendSearchRows();
+      },
+      (error) => {
+        friendSearchStatus = 'done';
+        const nextResults = document.querySelector('.friend-search-results');
+        if (nextResults) nextResults.innerHTML = renderFriendSearchRows();
+        showToast(error.message);
+      }
+    );
+    return;
+  }
+
   const createStatusForm = event.target.closest('#createStatusForm');
   if (createStatusForm) {
     event.preventDefault();

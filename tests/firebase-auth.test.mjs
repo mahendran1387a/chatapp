@@ -34,6 +34,8 @@ test('Firebase Google auth gates chat access and removes manual new-chat registr
   assert.match(app, /currentAuthUser/);
   assert.match(app, /createAuthenticatedContact/);
   assert.match(app, /friendSearchQuery/);
+  assert.match(app, /id="friendSearchForm"/);
+  assert.match(app, /data-friend-search-submit/);
   assert.match(app, /friendSearchStatus = friendSearchQuery\.trim\(\) \? 'loading' : 'idle'/);
   assert.match(app, /Searching/);
   assert.match(app, /Friend not found\. Ask them to sign in first\./);
