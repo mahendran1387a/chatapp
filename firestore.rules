@@ -39,7 +39,7 @@ service cloud.firestore {
         && request.resource.data.email == request.auth.token.email
         && request.resource.data.displayName is string
         && request.resource.data.photoURL is string
-        && request.resource.data.onlineStatus in ['online', 'offline']
+        && request.resource.data.onlineStatus in ['online', 'away', 'offline']
         && request.resource.data.isOnline is bool;
     }
 

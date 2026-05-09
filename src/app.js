@@ -23,6 +23,7 @@ import {
   logoutGoogleUser,
   saveUserProfile,
   sendFirebaseMessage,
+  setUserOnlineStatus,
   signInWithGoogle,
   startAuthListener,
   subscribeAuthenticatedUsers,
@@ -173,6 +174,7 @@ let unsubscribeConversation = () => {};
 let subscribedConversationContactId = '';
 let settingsSearchQuery = '';
 let friendSearchQuery = '';
+let currentPresenceStatus = '';
 let isLoggedOut = false;
 let mobileConversationOpen = false;
 const settingSwitches = new Map();
@@ -273,6 +275,21 @@ function getUserAvatar(user) {
   return initials(getUserName(user)) || 'GU';
 }
 
+function getPresenceStatusLabel(onlineStatus) {
+  if (onlineStatus === 'online') return '🟢 Online';
+  if (onlineStatus === 'away') return '🌙 Away';
+  return '⚫ Offline';
+}
+
+function getPresenceStatusClass(onlineStatus) {
+  return ['online', 'away', 'offline'].includes(onlineStatus) ? onlineStatus : 'offline';
+}
+
+function renderPresenceStatus(onlineStatus, extraClass = '') {
+  const statusClass = getPresenceStatusClass(onlineStatus);
+  return `<span class="presence-status ${statusClass} ${extraClass}">${getPresenceStatusLabel(statusClass)}</span>`;
+}
+
 function renderUserPhoto(user, extraClass = '') {
   if (user?.photoURL) {
     return `<img class="avatar ${extraClass}" src="${escapeAttribute(user.photoURL)}" alt="" />`;
@@ -316,6 +333,7 @@ function renderSignedInUser() {
     <span>
       <strong>${escapeHtml(getUserName(currentAuthUser))}</strong>
       <small>${escapeHtml(currentAuthUser?.email ?? '')}</small>
+      ${renderPresenceStatus(currentPresenceStatus || 'online', 'mini')}
     </span>
   `;
 }
@@ -526,7 +544,11 @@ function renderAuthenticatedUserRows(emptyMessage) {
     ? users.map((user) => `
         <button class="auth-user-row" type="button" data-auth-user-id="${user.uid}">
           ${renderUserPhoto(user, 'small')}
-          <span><strong>${escapeHtml(getUserName(user))}</strong><small>${escapeHtml(user.email ?? '')}</small></span>
+          <span>
+            <strong>${escapeHtml(getUserName(user))}</strong>
+            <small>${escapeHtml(user.email ?? '')}</small>
+            ${renderPresenceStatus(user.onlineStatus)}
+          </span>
         </button>
       `).join('')
     : `<p class="empty-copy">${emptyMessage}</p>`;
@@ -545,7 +567,11 @@ function renderFriendSearchRows() {
     ${users.map((user) => `
       <button class="auth-user-row" type="button" data-auth-user-id="${user.uid}">
         ${renderUserPhoto(user, 'small')}
-        <span><strong>${escapeHtml(getUserName(user))}</strong><small>${escapeHtml(user.email ?? '')}</small></span>
+        <span>
+          <strong>${escapeHtml(getUserName(user))}</strong>
+          <small>${escapeHtml(user.email ?? '')}</small>
+          ${renderPresenceStatus(user.onlineStatus)}
+        </span>
       </button>
     `).join('')}
   `;
@@ -792,7 +818,10 @@ function renderChats() {
             ${renderContactAvatar(contact)}
             <span class="chat-copy" data-contact-menu="${contact.id}">
               <span class="chat-title-row">
-                <span class="chat-name">${contact.name}</span>
+                <span class="chat-name-wrap">
+                  <span class="chat-name">${contact.name}</span>
+                  ${renderPresenceStatus(contact.onlineStatus, 'compact')}
+                </span>
                 <span class="chat-time">${contact.time}</span>
               </span>
               <span class="chat-preview">${contact.deleted ? 'This message was deleted' : contact.preview}</span>
@@ -821,7 +850,7 @@ function renderConversation() {
       ${renderContactAvatar(contact, 'small')}
       <span class="conversation-title">
         <strong>${contact.name}</strong>
-        <small>online</small>
+        <small>${renderPresenceStatus(contact.onlineStatus)}</small>
       </span>
       <span class="conversation-actions">
         <button title="Voice call" aria-label="Voice call" data-action="voiceCall">Call</button>
@@ -1486,6 +1515,7 @@ document.addEventListener('click', (event) => {
   }
 
   if (event.target.closest('[data-auth-logout]')) {
+    updateCurrentPresence('offline');
     logoutGoogleUser().catch((error) => showToast(error.message));
     return;
   }
@@ -1872,6 +1902,25 @@ document.addEventListener('click', (event) => {
   renderAll();
 });
 
+function updateCurrentPresence(onlineStatus) {
+  if (!currentAuthUser) return;
+  const nextStatus = getPresenceStatusClass(onlineStatus);
+  if (currentPresenceStatus === nextStatus) return;
+  currentPresenceStatus = nextStatus;
+  setUserOnlineStatus(currentAuthUser, nextStatus).catch((error) => showToast(error.message));
+  renderSignedInUser();
+}
+
+document.addEventListener('visibilitychange', () => {
+  updateCurrentPresence(document.hidden ? 'away' : 'online');
+});
+
+window.addEventListener('beforeunload', () => {
+  if (currentAuthUser) {
+    setUserOnlineStatus(currentAuthUser, 'offline');
+  }
+});
+
 function startFirebaseAuth() {
   startAuthListener(
     async (user) => {
@@ -1886,6 +1935,7 @@ function startFirebaseAuth() {
         authenticatedUsers = [];
         friendSearchResults = [];
         friendSearchStatus = 'idle';
+        currentPresenceStatus = '';
         renderAll();
         return;
       }
@@ -1893,6 +1943,8 @@ function startFirebaseAuth() {
       await saveUserProfile(user).catch((error) => {
         authError = error.message;
       });
+      currentPresenceStatus = '';
+      updateCurrentPresence(document.hidden ? 'away' : 'online');
       unsubscribeUsers = subscribeAuthenticatedUsers(
         (users) => {
           authenticatedUsers = users;

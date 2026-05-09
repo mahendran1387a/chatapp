@@ -22,10 +22,19 @@ test('Firebase Google auth gates chat access and removes manual new-chat registr
   assert.match(auth, /setDoc\(doc\(firebase\.db, 'users', user\.uid\), toUserProfile\(user\), \{ merge: true \}\)/);
   assert.match(auth, /lastLoginAt: serverTimestamp\(\)/);
   assert.match(auth, /onlineStatus: 'online'/);
+  assert.match(auth, /normalizeOnlineStatus/);
+  assert.match(auth, /allowedOnlineStatuses/);
   assert.match(auth, /dedupeGoogleUsers/);
   assert.match(auth, /seenEmails/);
   assert.doesNotMatch(auth, /user\.onlineStatus === 'online'/);
   assert.match(auth, /setUserOnlineStatus/);
+  assert.match(app, /setUserOnlineStatus/);
+  assert.match(app, /visibilitychange/);
+  assert.match(app, /beforeunload/);
+  assert.match(app, /renderPresenceStatus/);
+  assert.match(app, /🟢 Online/);
+  assert.match(app, /🌙 Away/);
+  assert.match(app, /⚫ Offline/);
   assert.match(auth, /senderUid: user\.uid/);
   assert.match(auth, /senderEmail: user\.email/);
   assert.match(auth, /senderDisplayName:/);
@@ -56,7 +65,7 @@ test('Firestore rules require auth uid and sender identity to match request auth
   assert.match(rules, /request\.auth != null/);
   assert.match(rules, /request\.auth\.uid == uid/);
   assert.match(rules, /validUserProfile\(uid\)/);
-  assert.match(rules, /onlineStatus in \['online', 'offline'\]/);
+  assert.match(rules, /onlineStatus in \['online', 'away', 'offline'\]/);
   assert.match(rules, /senderUid == request\.auth\.uid/);
   assert.match(rules, /senderEmail == request\.auth\.token\.email/);
   assert.match(rules, /participants\.hasAny\(\[request\.auth\.uid\]\)/);

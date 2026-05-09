@@ -393,6 +393,13 @@ button {
   gap: 12px;
 }
 
+.chat-name-wrap {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 6px;
+}
+
 .chat-name,
 .status-copy strong {
   display: block;
@@ -1769,6 +1776,39 @@ button {
 .conversation-title small {
   color: var(--muted);
   font-size: 13px;
+}
+
+.presence-status {
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  max-width: 100%;
+  color: #667781;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.presence-status.online {
+  color: #08765f;
+}
+
+.presence-status.away {
+  color: #846300;
+}
+
+.presence-status.offline {
+  color: #667781;
+}
+
+.presence-status.compact {
+  flex: 0 0 auto;
+  font-size: 11px;
+}
+
+.presence-status.mini {
+  font-size: 11px;
 }
 
 .conversation-actions {

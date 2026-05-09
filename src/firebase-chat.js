@@ -28,6 +28,7 @@ let app;
 let auth;
 let db;
 let authPersistencePromise;
+const allowedOnlineStatuses = new Set(['online', 'away', 'offline']);
 
 export function getFirebaseSetupStatus() {
   return {
@@ -54,6 +55,10 @@ function ensureAuthPersistence(firebase) {
 
 function normalizeEmail(email) {
   return typeof email === 'string' ? email.trim().toLowerCase() : '';
+}
+
+function normalizeOnlineStatus(onlineStatus) {
+  return allowedOnlineStatuses.has(onlineStatus) ? onlineStatus : 'offline';
 }
 
 export function startAuthListener(onChange, onError) {
@@ -123,11 +128,12 @@ export async function saveUserProfile(user) {
 export async function setUserOnlineStatus(user, onlineStatus) {
   const firebase = ensureFirebase();
   if (!firebase || !user?.uid) return;
+  const normalizedStatus = normalizeOnlineStatus(onlineStatus);
   await setDoc(doc(firebase.db, 'users', user.uid), {
     uid: user.uid,
     email: normalizeEmail(user.email),
-    onlineStatus,
-    isOnline: onlineStatus === 'online',
+    onlineStatus: normalizedStatus,
+    isOnline: normalizedStatus === 'online',
     lastSeenAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   }, { merge: true });

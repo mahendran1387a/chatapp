@@ -251,7 +251,8 @@ test('creates contacts only from authenticated Firebase users', () => {
     uid: 'uid-aisha',
     email: 'aisha@gmail.com',
     displayName: 'Aisha Google',
-    photoURL: 'https://example.com/aisha.png'
+    photoURL: 'https://example.com/aisha.png',
+    onlineStatus: 'away'
   });
   const contact = updated.contacts[0];
 
@@ -260,6 +261,7 @@ test('creates contacts only from authenticated Firebase users', () => {
   assert.equal(contact.email, 'aisha@gmail.com');
   assert.equal(contact.name, 'Aisha Google');
   assert.equal(contact.photoURL, 'https://example.com/aisha.png');
+  assert.equal(contact.onlineStatus, 'away');
 });
 
 test('filters chat contacts to authenticated users only', () => {
@@ -289,6 +291,28 @@ test('deduplicates authenticated users by Gmail account', () => {
 
   assert.deepEqual(updated.contacts.map((contact) => contact.email), ['friend@gmail.com', 'other@gmail.com']);
   assert.deepEqual(updated.contacts.map((contact) => contact.id), ['uid-first', 'uid-other']);
+});
+
+test('updates authenticated contact online status from Google user records', () => {
+  const state = createInitialState({
+    contacts: [
+      buildSavedContact({
+        id: 'uid-friend',
+        uid: 'uid-friend',
+        name: 'Friend',
+        email: 'friend@gmail.com',
+        onlineStatus: 'offline'
+      })
+    ],
+    activeContactId: 'uid-friend'
+  });
+
+  const updated = reconcileAuthenticatedContacts(state, [
+    { uid: 'uid-me', email: 'me@gmail.com', displayName: 'Me', onlineStatus: 'online' },
+    { uid: 'uid-friend', email: 'friend@gmail.com', displayName: 'Friend Google', onlineStatus: 'online' }
+  ], 'uid-me');
+
+  assert.equal(updated.contacts[0].onlineStatus, 'online');
 });
 
 test('marks the latest chat message as deleted from the chat list', () => {
@@ -380,6 +404,10 @@ test('new chat flow uses authenticated Google users instead of typed names', () 
     assert.match(contents, /data-auth-user-id/);
     assert.match(contents, /authenticatedUsers\.filter/);
     assert.match(contents, /createAuthenticatedContact\(state, selectedUser\)/);
+    assert.match(contents, /renderPresenceStatus/);
+    assert.match(contents, /🟢 Online/);
+    assert.match(contents, /🌙 Away/);
+    assert.match(contents, /⚫ Offline/);
     assert.match(contents, /Find friend by Gmail/);
     assert.match(contents, /Invite Friend/);
     assert.match(contents, /id="friendSearchForm"/);

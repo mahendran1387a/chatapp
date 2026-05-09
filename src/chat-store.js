@@ -578,6 +578,8 @@ function buildAuthenticatedContact(user, existingContact = {}) {
     email,
     phone: existingContact.phone ?? '',
     photoURL: user.photoURL ?? existingContact.photoURL ?? '',
+    onlineStatus: user.onlineStatus ?? existingContact.onlineStatus ?? 'offline',
+    isOnline: user.isOnline ?? existingContact.isOnline ?? user.onlineStatus === 'online',
     avatar: getUserAvatar(user),
     color: existingContact.color ?? '#cbd6dc',
     textColor: existingContact.textColor ?? '#42545d',
