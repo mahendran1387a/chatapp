@@ -33,6 +33,10 @@ test('conversation allows text and voice call only, with no attachment/media but
 
     assert.match(contents, /data-action="voiceCall"/);
     assert.match(contents, /textarea id="messageInput"/);
+    assert.match(contents, /data-emoji-toggle/);
+    assert.match(contents, /data-emoji-value="😀"/);
+    assert.match(contents, /😀 😂 🎮 🚀 🦄 🍕 ⚽/);
+    assert.match(contents, /insertEmojiIntoMessage/);
     assert.match(contents, /message-status/);
     assert.match(contents, /readBy/);
     assert.doesNotMatch(contents, /data-action="attach"/);

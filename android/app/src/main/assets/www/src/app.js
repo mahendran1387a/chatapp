@@ -199,6 +199,8 @@ const statusValues = {
   'Background color': 'Green'
 };
 const newChatDraft = loadNewChatDraft();
+const quickEmojiValues = ['😀', '😂', '🎮', '🚀', '🦄', '🍕', '⚽'];
+const quickEmojiLabel = '😀 😂 🎮 🚀 🦄 🍕 ⚽';
 
 const chatList = document.querySelector('#chatList');
 const searchInput = document.querySelector('#searchInput');
@@ -288,6 +290,16 @@ function getPresenceStatusClass(onlineStatus) {
 function renderPresenceStatus(onlineStatus, extraClass = '') {
   const statusClass = getPresenceStatusClass(onlineStatus);
   return `<span class="presence-status ${statusClass} ${extraClass}">${getPresenceStatusLabel(statusClass)}</span>`;
+}
+
+function insertEmojiIntoMessage(input, emoji) {
+  const start = input.selectionStart ?? input.value.length;
+  const end = input.selectionEnd ?? start;
+  input.value = `${input.value.slice(0, start)}${emoji}${input.value.slice(end)}`;
+  const cursor = start + emoji.length;
+  input.setSelectionRange(cursor, cursor);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.focus();
 }
 
 function renderUserPhoto(user, extraClass = '') {
@@ -882,6 +894,16 @@ function renderConversation() {
         .join('')}
     </div>
     <form class="composer" id="composer">
+      <span class="emoji-tools">
+        <button type="button" title="Emoji" aria-label="Emoji" data-emoji-toggle>😀</button>
+        <span class="emoji-picker hidden" data-emoji-picker aria-label="${quickEmojiLabel}">
+          ${quickEmojiValues.map((emoji) => (
+            emoji === '😀'
+              ? '<button type="button" data-emoji-value="😀" aria-label="Add 😀">😀</button>'
+              : `<button type="button" data-emoji-value="${emoji}" aria-label="Add ${emoji}">${emoji}</button>`
+          )).join('')}
+        </span>
+      </span>
       <textarea id="messageInput" rows="1" autocomplete="off" placeholder="Type a message" spellcheck="true"></textarea>
       <button type="submit" title="Send" aria-label="Send">➤</button>
     </form>
@@ -900,6 +922,15 @@ function renderConversation() {
       event.preventDefault();
       conversation.querySelector('#composer').requestSubmit();
     }
+  });
+  conversation.querySelector('[data-emoji-toggle]').addEventListener('click', () => {
+    conversation.querySelector('[data-emoji-picker]').classList.toggle('hidden');
+    conversation.querySelector('#messageInput').focus();
+  });
+  conversation.querySelector('[data-emoji-picker]').addEventListener('click', (event) => {
+    const emojiButton = event.target.closest('[data-emoji-value]');
+    if (!emojiButton) return;
+    insertEmojiIntoMessage(conversation.querySelector('#messageInput'), emojiButton.dataset.emojiValue);
   });
   resizeComposer();
   conversation.querySelector('#composer').addEventListener('submit', async (event) => {

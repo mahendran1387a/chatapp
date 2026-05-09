@@ -1886,11 +1886,31 @@ button {
 
 .composer {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 42px;
+  grid-template-columns: 42px minmax(0, 1fr) 42px;
   gap: 10px;
   align-items: end;
   padding: 10px 16px;
   background: #f0f2f5;
+}
+
+.emoji-tools {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
+.emoji-picker {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 10px);
+  z-index: 12;
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  background: #ffffff;
+  border: 1px solid #d8dde1;
+  border-radius: 999px;
+  box-shadow: 0 12px 34px rgba(17, 27, 33, 0.16);
 }
 
 .composer button {
@@ -1906,6 +1926,12 @@ button {
 
 .composer button:hover {
   background: #dfe3e7;
+}
+
+.emoji-picker button {
+  width: 34px;
+  height: 34px;
+  font-size: 20px;
 }
 
 .composer textarea {
@@ -2369,7 +2395,7 @@ button {
   }
 
   .composer {
-    grid-template-columns: minmax(0, 1fr) 38px;
+    grid-template-columns: 38px minmax(0, 1fr) 38px;
     gap: 6px;
     padding: 8px 10px;
   }
@@ -2384,5 +2410,12 @@ button {
     padding: 0 13px;
     padding-top: 9px;
     padding-bottom: 9px;
+  }
+
+  .emoji-picker {
+    left: 0;
+    max-width: calc(100vw - 20px);
+    border-radius: 20px;
+    flex-wrap: wrap;
   }
 }
