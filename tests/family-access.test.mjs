@@ -18,6 +18,8 @@ test('Firebase identity is narrowed to approved family members only', () => {
   assert.match(auth, /subscribePendingFamilyUsers/);
   assert.match(auth, /sendFamilyInvite/);
   assert.match(auth, /approveFamilyMember/);
+  assert.match(auth, /existingData/);
+  assert.match(auth, /!\('approved' in existingData\)/);
   assert.match(auth, /approved: true/);
   assert.match(auth, /role = 'owner'/);
 });
@@ -47,6 +49,7 @@ test('Firestore rules enforce closed family access and owner-only invites', () =
   assert.match(rules, /resource\.data\.approved == true/);
   assert.match(rules, /match \/invites\/\{email\}/);
   assert.match(rules, /allow create, update: if ownerEmail\(\)/);
+  assert.match(rules, /validSelfPendingMigration\(uid\)/);
   assert.match(rules, /approvedUser\(request\.auth\.uid\)/);
   assert.match(rules, /approvedUid\(data\.participants\[0\]\)/);
   assert.match(rules, /approvedUid\(data\.participants\[1\]\)/);

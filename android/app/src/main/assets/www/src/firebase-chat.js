@@ -138,8 +138,9 @@ export async function saveUserProfile(user) {
   if (!firebase || !user) return;
   const userRef = doc(firebase.db, 'users', user.uid);
   const existing = await getDoc(userRef);
+  const existingData = existing.exists() ? existing.data() : {};
   const profile = toUserProfile(user);
-  if (!existing.exists() && !isFamilyOwnerEmail(user.email)) {
+  if (!isFamilyOwnerEmail(user.email) && (!existing.exists() || !('approved' in existingData))) {
     profile.approved = false;
     profile.role = 'pending';
   }

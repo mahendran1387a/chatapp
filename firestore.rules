@@ -78,6 +78,29 @@ service cloud.firestore {
         && request.resource.data.isOnline is bool;
     }
 
+    function validSelfPendingMigration(uid) {
+      return userOwnsProfile(uid)
+        && !ownerEmail()
+        && !('approved' in resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'displayName',
+          'photoURL',
+          'lastLoginAt',
+          'lastSeenAt',
+          'onlineStatus',
+          'isOnline',
+          'updatedAt',
+          'approved',
+          'role'
+        ])
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.approved == false
+        && request.resource.data.role == 'pending'
+        && request.resource.data.onlineStatus in ['online', 'away', 'offline']
+        && request.resource.data.isOnline is bool;
+    }
+
     function ownerWriteUserProfile(uid) {
       return ownerEmail()
         && request.resource.data.keys().hasOnly(profileKeys())
@@ -128,7 +151,7 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if ownerEmail() || userOwnsProfile(uid) || resource.data.approved == true;
       allow create: if validSelfProfileCreate(uid) || ownerWriteUserProfile(uid);
-      allow update: if validSelfProfileUpdate(uid) || ownerWriteUserProfile(uid);
+      allow update: if validSelfProfileUpdate(uid) || validSelfPendingMigration(uid) || ownerWriteUserProfile(uid);
       allow delete: if false;
     }
 
