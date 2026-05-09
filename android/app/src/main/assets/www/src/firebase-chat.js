@@ -216,9 +216,10 @@ export function subscribePendingFamilyUsers(onUsers, onError) {
   }
 
   return onSnapshot(
-    query(collection(firebase.db, 'users'), where('approved', '==', false)),
+    collection(firebase.db, 'users'),
     (snapshot) => {
       const users = dedupeGoogleUsers(snapshot.docs.map((item) => ({ uid: item.id, ...item.data() })))
+        .filter((user) => user.approved !== true)
         .sort((first, second) => {
           const firstName = first.displayName || first.email || '';
           const secondName = second.displayName || second.email || '';

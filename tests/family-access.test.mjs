@@ -20,6 +20,7 @@ test('Firebase identity is narrowed to approved family members only', () => {
   assert.match(auth, /approveFamilyMember/);
   assert.match(auth, /existingData/);
   assert.match(auth, /!\('approved' in existingData\)/);
+  assert.match(auth, /user\.approved !== true/);
   assert.match(auth, /approved: true/);
   assert.match(auth, /role = 'owner'/);
 });
