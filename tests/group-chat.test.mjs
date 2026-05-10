@@ -45,6 +45,32 @@ test('reconciles Firestore groups into the chat list and Groups filter', () => {
   assert.deepEqual(groups[0].memberUids, ['uid-me', 'uid-aisha', 'uid-rohan']);
 });
 
+test('reconciles participant-only Firestore groups for existing group documents', () => {
+  const state = createInitialState();
+  const updated = reconcileAuthenticatedContacts(
+    state,
+    [
+      { uid: 'uid-me', email: 'me@gmail.com', displayName: 'Me' },
+      { uid: 'uid-aisha', email: 'aisha@gmail.com', displayName: 'Aisha' }
+    ],
+    'uid-aisha',
+    [
+      {
+        id: 'group-study',
+        groupName: 'Study Team',
+        type: 'group',
+        participants: ['uid-me', 'uid-aisha'],
+        createdBy: 'uid-me'
+      }
+    ]
+  );
+
+  const groups = filterContacts(updated, { filter: 'groups' });
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].name, 'Study Team');
+  assert.deepEqual(groups[0].memberUids, ['uid-me', 'uid-aisha']);
+});
+
 test('group chats can be selected and accept outgoing text messages', () => {
   const state = reconcileAuthenticatedContacts(
     createInitialState(),
@@ -111,6 +137,9 @@ test('Firebase group helpers and rules protect group membership and sender ident
   assert.doesNotMatch(firebase, /updateDoc\(groupRef,\s*\{\s*updatedAt/s);
   assert.match(firebase, /where\('type', '==', 'group'\)/);
   assert.match(firebase, /where\('members', 'array-contains', currentUid\)/);
+  assert.match(firebase, /where\('participants', 'array-contains', currentUid\)/);
+  assert.match(firebase, /mergeFirebaseGroups/);
+  assert.match(firebase, /isUserInGroup/);
   assert.match(firebase, /sendFirebaseGroupMessage/);
   assert.match(firebase, /subscribeGroupMessages/);
   assert.match(rules, /match \/groups\/\{groupId\}/);
@@ -118,6 +147,8 @@ test('Firebase group helpers and rules protect group membership and sender ident
   assert.match(rules, /'type'/);
   assert.match(rules, /type == 'group'/);
   assert.match(rules, /participants/);
+  assert.match(rules, /groupHasSignedInUser/);
+  assert.match(rules, /participants\.hasAny\(\[request\.auth\.uid\]\)/);
   assert.match(rules, /members == request\.resource\.data\.participants/);
   assert.match(rules, /members\.size\(\) >= 2/);
   assert.match(rules, /createdBy == request\.auth\.uid/);

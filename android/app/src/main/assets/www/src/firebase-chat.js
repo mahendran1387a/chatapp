@@ -267,6 +267,28 @@ function normalizeGroupMembers(memberUids = [], currentUid = '') {
   return [...new Set([currentUid, ...memberUids].filter((uid) => typeof uid === 'string' && uid.trim()))];
 }
 
+function isUserInGroup(group, uid) {
+  const members = Array.isArray(group?.members) ? group.members : [];
+  const participants = Array.isArray(group?.participants) ? group.participants : [];
+  return members.includes(uid) || participants.includes(uid);
+}
+
+function mapGroupSnapshot(snapshot) {
+  return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+}
+
+function getGroupCreatedTime(group) {
+  return group.createdAt?.toMillis?.() ?? group.createdAt ?? 0;
+}
+
+function mergeFirebaseGroups(...groupLists) {
+  const groupsById = new Map();
+  for (const group of groupLists.flat()) {
+    if (group?.id) groupsById.set(group.id, { ...groupsById.get(group.id), ...group });
+  }
+  return [...groupsById.values()].sort((first, second) => getGroupCreatedTime(second) - getGroupCreatedTime(first));
+}
+
 function mapMessageDoc(item, currentUid, readTargetUid = '') {
   const data = item.data();
   const readBy = Array.isArray(data.readBy) ? data.readBy : [];
@@ -329,24 +351,42 @@ export function subscribeUserGroups(currentUid, onGroups, onError) {
     return () => {};
   }
 
-  return onSnapshot(
-    query(
-      collection(firebase.db, 'groups'),
-      where('type', '==', 'group'),
-      where('members', 'array-contains', currentUid)
-    ),
+  let memberGroups = [];
+  let participantGroups = [];
+  const emitGroups = () => onGroups(mergeFirebaseGroups(memberGroups, participantGroups));
+  const groupCollection = collection(firebase.db, 'groups');
+  const memberGroupsQuery = query(
+    groupCollection,
+    where('type', '==', 'group'),
+    where('members', 'array-contains', currentUid)
+  );
+  const participantGroupsQuery = query(
+    groupCollection,
+    where('type', '==', 'group'),
+    where('participants', 'array-contains', currentUid)
+  );
+
+  const unsubscribeMembers = onSnapshot(
+    memberGroupsQuery,
     (snapshot) => {
-      const groups = snapshot.docs
-        .map((item) => ({ id: item.id, ...item.data() }))
-        .sort((first, second) => {
-          const firstCreated = first.createdAt?.toMillis?.() ?? 0;
-          const secondCreated = second.createdAt?.toMillis?.() ?? 0;
-          return secondCreated - firstCreated;
-        });
-      onGroups(groups);
+      memberGroups = mapGroupSnapshot(snapshot);
+      emitGroups();
     },
     (error) => onError?.(error)
   );
+  const unsubscribeParticipants = onSnapshot(
+    participantGroupsQuery,
+    (snapshot) => {
+      participantGroups = mapGroupSnapshot(snapshot);
+      emitGroups();
+    },
+    (error) => onError?.(error)
+  );
+
+  return () => {
+    unsubscribeMembers();
+    unsubscribeParticipants();
+  };
 }
 
 export function getConversationId(firstUid, secondUid) {
@@ -390,7 +430,10 @@ export function subscribeConversationMessages(currentUid, contactUid, onMessages
 
   const conversationId = getConversationId(currentUid, contactUid);
   return onSnapshot(
-    query(collection(firebase.db, 'conversations', conversationId, 'messages'), orderBy('timestamp')),
+    query(
+      collection(firebase.db, 'conversations', conversationId, 'messages'),
+      orderBy('timestamp')
+    ),
     (snapshot) => {
       const messages = snapshot.docs.map((item) => {
         const data = item.data();
@@ -417,7 +460,7 @@ export async function sendFirebaseGroupMessage(groupId, text, user) {
   const groupRef = doc(firebase.db, 'groups', groupId);
   const groupSnapshot = await getDoc(groupRef);
   const group = groupSnapshot.exists() ? groupSnapshot.data() : null;
-  if (!Array.isArray(group?.members) || !group.members.includes(user.uid)) {
+  if (!isUserInGroup(group, user.uid)) {
     throw new Error('You are not a member of this group.');
   }
 
