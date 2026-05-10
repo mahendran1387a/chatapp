@@ -54,6 +54,23 @@ test('conversation allows text and voice call only, with no attachment/media but
   }
 });
 
+test('kids-safe app removes old status channel business and manual identity forms', () => {
+  for (const relativePath of appFiles) {
+    const contents = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
+
+    assert.doesNotMatch(contents, /function disabledStatusComposer/);
+    assert.doesNotMatch(contents, /function disabledChannelComposer/);
+    assert.doesNotMatch(contents, /createStatusForm/);
+    assert.doesNotMatch(contents, /createChannelForm/);
+    assert.doesNotMatch(contents, /businessToolForm/);
+    assert.doesNotMatch(contents, /businessProfileValues/);
+    assert.doesNotMatch(contents, /createdChannelValues/);
+    assert.doesNotMatch(contents, /statusValues/);
+    assert.doesNotMatch(contents, /id="editContactForm"/);
+    assert.doesNotMatch(contents, /data-contact-menu-action="edit-contact"/);
+  }
+});
+
 test('chat view keeps the composer available after auth refresh when a chat is selected', () => {
   for (const relativePath of appFiles) {
     const contents = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
@@ -98,6 +115,7 @@ test('chat layout keeps the message bar inside the visible screen on desktop and
 
 test('kids-safe app keeps Google identity as the only chat identity source', () => {
   const app = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
+  const store = readFileSync(new URL('../src/chat-store.js', import.meta.url), 'utf8');
   const firebase = readFileSync(new URL('../src/firebase-chat.js', import.meta.url), 'utf8');
   const rules = readFileSync(new URL('../firestore.rules', import.meta.url), 'utf8');
 
@@ -108,4 +126,6 @@ test('kids-safe app keeps Google identity as the only chat identity source', () 
   assert.match(firebase, /readBy: \[user\.uid\]/);
   assert.match(rules, /request\.auth\.uid/);
   assert.match(rules, /readBy/);
+  assert.match(store, /export function createContactChat\(state\)[\s\S]*return state;/);
+  assert.match(store, /export function updateContactChat\(state\)[\s\S]*return state;/);
 });

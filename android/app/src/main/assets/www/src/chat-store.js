@@ -31,54 +31,7 @@ const sampleStatuses = {
   viewed: []
 };
 
-const sampleChannels = [
-  {
-    id: 'uae-news',
-    name: 'UAE News',
-    avatar: 'UN',
-    color: '#657180',
-    followers: '121K followers',
-    verified: true,
-    following: false
-  },
-  {
-    id: 'emarat-today',
-    name: 'Emarat Al Youm',
-    avatar: 'EY',
-    color: '#f5f5f5',
-    textColor: '#e21c3d',
-    followers: '269K followers',
-    verified: true,
-    following: false
-  },
-  {
-    id: 'lovin-dubai',
-    name: 'Lovin Dubai',
-    avatar: 'LD',
-    color: '#ed1c35',
-    followers: '311K followers',
-    verified: true,
-    following: false
-  },
-  {
-    id: 'gulf-news',
-    name: 'Gulf News',
-    avatar: 'GN',
-    color: '#242424',
-    followers: '549K followers',
-    verified: true,
-    following: false
-  },
-  {
-    id: 'khaleej-times',
-    name: 'Khaleej Times',
-    avatar: 'KT',
-    color: '#182342',
-    followers: '890K followers',
-    verified: true,
-    following: false
-  }
-];
+const sampleChannels = [];
 
 const actionViews = {
   newChat: {
@@ -123,149 +76,6 @@ const actionViews = {
     body: 'Media sharing is turned off to keep Kids WhatsApp simple and safe.',
     primaryAction: 'OK',
     points: ['Text only', 'Voice calls', 'Safe chats']
-  },
-  addStatus: {
-    title: 'Add status update',
-    body: 'Share a photo, video, or text update that disappears after 24 hours.',
-    primaryAction: 'Create status',
-    points: ['Text status', 'Photo status', 'Status privacy'],
-    form: 'createStatus',
-    fields: [
-      { name: 'Status text', type: 'text', value: '' },
-      { name: 'Background color', type: 'text', value: 'Green' }
-    ]
-  },
-  myStatus: {
-    title: 'My status',
-    body: 'Your status updates appear here after you post them.',
-    primaryAction: 'Add status',
-    points: ['No active updates', 'Viewed by contacts', 'Ends after 24 hours']
-  },
-  addChannel: {
-    title: 'Create channel',
-    body: 'Create a public channel to share updates with followers.',
-    primaryAction: 'Create channel',
-    points: ['Channel name', 'Description', 'Profile photo'],
-    form: 'createChannel',
-    fields: [
-      { name: 'Channel name', type: 'text', value: '' },
-      { name: 'Description', type: 'text', value: '' }
-    ]
-  },
-  discoverChannels: {
-    title: 'Discover channels',
-    body: 'Browse more channels about news, entertainment, sports, lifestyle, and local updates.',
-    primaryAction: 'Browse channels',
-    points: ['News', 'Sports', 'Lifestyle'],
-    discoverItems: [
-      { name: 'Dubai Foodies', category: 'Lifestyle', followers: '82K followers', avatar: 'DF', color: '#f06f3c' },
-      { name: 'UAE Football', category: 'Sports', followers: '214K followers', avatar: 'UF', color: '#198754' },
-      { name: 'Cinema UAE', category: 'Entertainment', followers: '134K followers', avatar: 'CU', color: '#7357d8' },
-      { name: 'Tech Gulf', category: 'Technology', followers: '99K followers', avatar: 'TG', color: '#2874a6' }
-    ]
-  },
-  createChannel: {
-    title: 'Create channel',
-    body: 'Set up a channel for announcements and public updates.',
-    primaryAction: 'Create channel',
-    points: ['Pick a name', 'Add an icon', 'Invite followers'],
-    form: 'createChannel',
-    fields: [
-      { name: 'Channel name', type: 'text', value: '' },
-      { name: 'Description', type: 'text', value: '' }
-    ]
-  },
-  exampleCommunities: {
-    title: 'Example communities',
-    body: 'Communities organize related groups under one place with admin announcements.',
-    primaryAction: 'View examples',
-    points: ['School community', 'Neighborhood community', 'Class groups'],
-    communityExamples: [
-      { name: 'School community', groups: 'KG1 A, KG1 B, Transport', members: '248 members', color: '#25d366' },
-      { name: 'Neighborhood community', groups: 'Events, Safety, Announcements', members: '93 members', color: '#00a884' },
-      { name: 'Tuition community', groups: 'Arabic, Maths, Homework', members: '126 members', color: '#7357d8' }
-    ]
-  },
-  businessProfile: {
-    title: 'Business profile',
-    body: 'Manage business address, opening hours, website, and customer-facing details.',
-    primaryAction: 'Edit profile',
-    points: ['Address', 'Hours', 'Website'],
-    fields: [
-      { name: 'Business name', type: 'text', value: 'Sangavi Store' },
-      { name: 'Username', type: 'text', value: '' },
-      { name: 'Password', type: 'password', value: '' },
-      { name: 'Website', type: 'text', value: '' }
-    ]
-  },
-  catalog: {
-    title: 'Catalog',
-    body: 'Show products and services so customers can browse before they message you.',
-    primaryAction: 'Add item',
-    points: ['Product photos', 'Prices', 'Descriptions'],
-    form: 'catalogItem',
-    fields: [
-      { name: 'Item name', type: 'text', value: '' },
-      { name: 'Price', type: 'text', value: '' },
-      { name: 'Description', type: 'text', value: '' }
-    ]
-  },
-  orders: {
-    title: 'Orders',
-    body: 'Track customer orders, payments, and order history in one place.',
-    primaryAction: 'View orders',
-    points: ['Pending', 'Paid', 'Completed'],
-    listItems: [
-      { name: 'Order #1024', detail: 'Pending payment', tag: 'Pending' },
-      { name: 'Order #1023', detail: 'Paid by customer', tag: 'Paid' },
-      { name: 'Order #1022', detail: 'Delivered yesterday', tag: 'Completed' }
-    ]
-  },
-  advertise: {
-    title: 'Advertise',
-    body: 'Create ads that bring customers directly into a WhatsApp conversation.',
-    primaryAction: 'Create ad',
-    points: ['Audience', 'Budget', 'Message template'],
-    form: 'advertise',
-    fields: [
-      { name: 'Ad title', type: 'text', value: '' },
-      { name: 'Budget', type: 'text', value: '' },
-      { name: 'Message', type: 'text', value: '' }
-    ]
-  },
-  quickReplies: {
-    title: 'Quick replies',
-    body: 'Save frequent answers and reuse them while chatting with customers.',
-    primaryAction: 'Add quick reply',
-    points: ['Greeting', 'Price answer', 'Opening hours'],
-    form: 'quickReply',
-    fields: [
-      { name: 'Shortcut', type: 'text', value: '' },
-      { name: 'Message', type: 'text', value: '' }
-    ]
-  },
-  labels: {
-    title: 'Labels',
-    body: 'Organise chats and customers with colored labels.',
-    primaryAction: 'Create label',
-    points: ['New customer', 'Pending payment', 'Completed'],
-    listItems: [
-      { name: 'New customer', detail: 'Green label', tag: '12 chats' },
-      { name: 'Pending payment', detail: 'Yellow label', tag: '4 chats' },
-      { name: 'Completed', detail: 'Blue label', tag: '18 chats' }
-    ]
-  },
-  broadcastAudience: {
-    title: 'Broadcast audience',
-    body: 'Upload recipients and send one announcement to many customers.',
-    primaryAction: 'Upload list',
-    points: ['CSV upload', 'Recipient review', 'Broadcast draft'],
-    form: 'broadcastAudience',
-    fields: [
-      { name: 'Audience name', type: 'text', value: '' },
-      { name: 'Recipients', type: 'text', value: '' },
-      { name: 'Broadcast message', type: 'text', value: '' }
-    ]
   },
   chooseNotifications: {
     title: 'Notifications',
@@ -831,51 +641,8 @@ export function switchSection(state, section) {
   };
 }
 
-export function createContactChat(state, { name, phone, email = '' }) {
-  const cleanName = name.trim();
-  const cleanPhone = phone.trim();
-  const cleanEmail = email.trim() || makeGmailFromName(cleanName);
-  if (!cleanName || !cleanPhone) return state;
-
-  const idBase = cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'friend';
-  const id = `${idBase}-${Date.now()}`;
-  const avatar = cleanName
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join('')
-    .toUpperCase();
-  const newContact = {
-    id,
-    name: cleanName,
-    phone: cleanPhone,
-    email: cleanEmail,
-    avatar,
-    color: '#cbd6dc',
-    textColor: '#42545d',
-    preview: cleanEmail || 'New chat created',
-    time: 'Now',
-    unread: 0,
-    favorite: false,
-    group: false,
-    messages: [
-      {
-        id: `${id}-created`,
-        direction: 'in',
-        text: `New chat created with ${cleanPhone}`,
-        time: 'Now'
-      }
-    ]
-  };
-
-  return {
-    ...state,
-    activeSection: 'chats',
-    activeContactId: id,
-    deletedContactIds: (state.deletedContactIds ?? []).filter((deletedId) => deletedId !== id),
-    contacts: [newContact, ...state.contacts]
-  };
+export function createContactChat(state) {
+  return state;
 }
 
 export function deleteLatestContactMessage(state, contactId) {
@@ -919,33 +686,8 @@ export function deleteContactChat(state, contactId) {
   };
 }
 
-export function updateContactChat(state, contactId, { name, phone, email = '' }) {
-  const cleanName = name.trim();
-  const cleanPhone = phone.trim();
-  const cleanEmail = email.trim() || makeGmailFromName(cleanName);
-  if (!cleanName || !cleanPhone) return state;
-
-  return {
-    ...state,
-    contacts: state.contacts.map((contact) =>
-      contact.id === contactId
-        ? {
-            ...contact,
-            name: cleanName,
-            phone: cleanPhone,
-            email: cleanEmail,
-            preview: cleanEmail || contact.preview,
-            avatar: cleanName
-              .split(/\s+/)
-              .filter(Boolean)
-              .slice(0, 2)
-              .map((part) => part[0])
-              .join('')
-              .toUpperCase()
-          }
-        : contact
-    )
-  };
+export function updateContactChat(state) {
+  return state;
 }
 
 export function updateMessage(state, contactId, messageId, text) {

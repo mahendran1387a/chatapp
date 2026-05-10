@@ -159,12 +159,12 @@ test('kids-safe mode blocks status, channels, communities, and business sections
   assert.equal(switchSection(state, 'business').activeSection, 'chats');
 });
 
-test('toggles channel follow state', () => {
+test('kids-safe state has no public channels to follow', () => {
   const state = createInitialState();
   const updated = toggleChannelFollow(state, 'lovin-dubai');
-  const channel = updated.channels.find((item) => item.id === 'lovin-dubai');
 
-  assert.equal(channel.following, true);
+  assert.deepEqual(state.channels, []);
+  assert.deepEqual(updated.channels, []);
 });
 
 test('switches to settings section', () => {
@@ -265,29 +265,22 @@ test('business profile action is disabled in kids-safe mode', () => {
   assert.equal(view.fields, undefined);
 });
 
-test('creates a new chat from a friend name, phone number, and Gmail', () => {
+test('does not create a chat from a manual name, phone number, or Gmail', () => {
   const state = createInitialState();
   const updated = createContactChat(state, {
     name: 'Aisha Friend',
     phone: '+971 50 123 4567',
     email: 'aisha.friend@gmail.com'
   });
-  const contact = updated.contacts.find((item) => item.name === 'Aisha Friend');
 
-  assert.equal(updated.activeContactId, contact.id);
-  assert.equal(contact.phone, '+971 50 123 4567');
-  assert.equal(contact.email, 'aisha.friend@gmail.com');
-  assert.equal(contact.preview, 'aisha.friend@gmail.com');
-  assert.equal(contact.messages[0].text, 'New chat created with +971 50 123 4567');
+  assert.deepEqual(updated, state);
 });
 
-test('creates a Gmail contact display from only the friend name when Gmail is blank', () => {
+test('does not invent a Gmail contact from only a friend name', () => {
   const state = createInitialState();
   const updated = createContactChat(state, { name: 'Paper Friend', phone: '+971 50 765 4321' });
-  const contact = updated.contacts.find((item) => item.name === 'Paper Friend');
 
-  assert.equal(contact.email, 'paper.friend@gmail.com');
-  assert.equal(contact.preview, 'paper.friend@gmail.com');
+  assert.deepEqual(updated, state);
 });
 
 test('creates contacts only from authenticated Firebase users', () => {
@@ -433,7 +426,7 @@ test('deletes a username contact from the chat list', () => {
   assert.ok(updated.deletedContactIds.includes('aadhish'));
 });
 
-test('edits a username contact name and phone number', () => {
+test('does not edit Google contact name, phone number, or Gmail from the browser', () => {
   const contact = buildSavedContact({ id: 'aadhish', name: 'aadhish', phone: '+971 50 111 2222' });
   const state = createInitialState({ contacts: [contact], activeContactId: contact.id });
 
@@ -443,10 +436,9 @@ test('edits a username contact name and phone number', () => {
     email: 'aadhish.home@gmail.com'
   });
 
-  assert.equal(updated.contacts[0].name, 'Aadhish Home');
-  assert.equal(updated.contacts[0].phone, '+91 98765 43210');
-  assert.equal(updated.contacts[0].email, 'aadhish.home@gmail.com');
-  assert.equal(updated.contacts[0].preview, 'aadhish.home@gmail.com');
+  assert.equal(updated.contacts[0].name, 'aadhish');
+  assert.equal(updated.contacts[0].phone, '+971 50 111 2222');
+  assert.notEqual(updated.contacts[0].email, 'aadhish.home@gmail.com');
   assert.equal(updated.activeContactId, contact.id);
 });
 
@@ -469,12 +461,14 @@ test('edits and deletes a selected chat message by right-click target', () => {
   assert.equal(deleted.contacts[0].messages[1].deleted, true);
 });
 
-test('chat contact actions open from right click or name press instead of permanent row buttons', () => {
+test('chat contact actions do not allow editing or deleting Google identity', () => {
   const contents = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
 
   assert.match(contents, /chatList\.addEventListener\('contextmenu'/);
   assert.match(contents, /data-contact-menu/);
-  assert.match(contents, /id="editContactForm"/);
+  assert.doesNotMatch(contents, /id="editContactForm"/);
+  assert.doesNotMatch(contents, /data-contact-menu-action="edit-contact"/);
+  assert.doesNotMatch(contents, /Delete username/);
   assert.doesNotMatch(contents, /class="chat-row-action"/);
 });
 

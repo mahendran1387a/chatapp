@@ -15,8 +15,6 @@ import {
   selectContact,
   sendMessage,
   switchSection,
-  toggleChannelFollow,
-  updateContactChat,
   updateMessage
 } from './chat-store.js';
 import {
@@ -43,7 +41,6 @@ import {
 
 const savedChatStorageKey = 'chatapp.savedChats.v1';
 const clientIdStorageKey = 'chatapp.clientId.v1';
-const newChatDraftStorageKey = 'chatapp.newChatDraft.v1';
 const profileStorageKey = 'kidswhatsapp.profile.v1';
 const serverChatStorageUrl = '/api/chats';
 const syncIntervalMs = 1500;
@@ -111,39 +108,6 @@ async function loadServerChatState() {
     return await response.json();
   } catch {
     return {};
-  }
-}
-
-function loadNewChatDraft() {
-  try {
-    const saved = window.localStorage.getItem(newChatDraftStorageKey);
-    const parsed = saved ? JSON.parse(saved) : {};
-    return {
-      name: typeof parsed.name === 'string' ? parsed.name : '',
-      phone: typeof parsed.phone === 'string' ? parsed.phone : '',
-      email: typeof parsed.email === 'string' ? parsed.email : ''
-    };
-  } catch {
-    return { name: '', phone: '', email: '' };
-  }
-}
-
-function saveNewChatDraft() {
-  try {
-    window.localStorage.setItem(newChatDraftStorageKey, JSON.stringify(newChatDraft));
-  } catch {
-    // Browser storage can be unavailable in incognito.
-  }
-}
-
-function clearNewChatDraft() {
-  newChatDraft.name = '';
-  newChatDraft.phone = '';
-  newChatDraft.email = '';
-  try {
-    window.localStorage.removeItem(newChatDraftStorageKey);
-  } catch {
-    // Browser storage can be unavailable in incognito.
   }
 }
 
@@ -251,27 +215,12 @@ let restoreSelectedChatOnLoad = Boolean(savedInitialChatState.activeContactId);
 let selectedGroupMemberIds = new Set();
 const settingSwitches = new Map();
 const profileValues = loadProfileValues();
-const businessProfileValues = {
-  'Business name': 'Sangavi Store',
-  Username: '',
-  Password: '',
-  Website: ''
-};
-const createdChannelValues = {
-  'Channel name': '',
-  Description: ''
-};
 const profileOwnershipLabels = {
   googleName: 'Safe sign-in name',
   googlePhoto: 'Profile photo',
   favoriteColor: 'Favorite color',
   funBio: 'Fun bio'
 };
-const statusValues = {
-  'Status text': '',
-  'Background color': 'Green'
-};
-const newChatDraft = loadNewChatDraft();
 const quickEmojiValues = ['😀', '😂', '🎮', '🚀', '🦄', '🍕', '⚽'];
 const quickEmojiLabel = '😀 😂 🎮 🚀 🦄 🍕 ⚽';
 
@@ -589,18 +538,18 @@ function disabledListView(view) {
   `;
 }
 
-function disabledStatusComposer(view) {
+function blockedStatusComposer(view) {
   emptyState.classList.remove('hidden');
   conversation.classList.add('hidden');
   emptyState.innerHTML = `
-    <form class="business-profile-form status-compose-form" id="createStatusForm">
-      <div class="status-preview-card">${statusValues['Status text'] || 'Type a status'}</div>
+    <div class="business-profile-form status-compose-form">
+      <div class="status-preview-card">Safe chat only</div>
       <h2>${view.title}</h2>
       <p>Write a text status for your contacts. It disappears after 24 hours.</p>
       <div class="business-fields">
         ${view.fields
           .map((field) => {
-            const value = statusValues[field.name] ?? field.value ?? '';
+            const value = field.value ?? '';
             return `
               <label class="profile-field">
                 <span>${field.name}</span>
@@ -610,8 +559,8 @@ function disabledStatusComposer(view) {
           })
           .join('')}
       </div>
-      <button class="detail-action" type="submit">Post status</button>
-    </form>
+      <button class="detail-action" type="button">OK</button>
+    </div>
   `;
 }
 
@@ -670,18 +619,18 @@ function disabledDiscoverView(view) {
   `;
 }
 
-function disabledChannelComposer(view) {
+function blockedChannelComposer(view) {
   emptyState.classList.remove('hidden');
   conversation.classList.add('hidden');
   emptyState.innerHTML = `
-    <form class="business-profile-form" id="createChannelForm">
+    <div class="business-profile-form">
       <div class="channels-illustration"></div>
       <h2>${view.title}</h2>
       <p>Create a channel for updates, announcements, or your favorite topic.</p>
       <div class="business-fields">
         ${view.fields
           .map((field) => {
-            const value = createdChannelValues[field.name] ?? field.value ?? '';
+            const value = field.value ?? '';
             return `
               <label class="profile-field">
                 <span>${field.name}</span>
@@ -691,8 +640,8 @@ function disabledChannelComposer(view) {
           })
           .join('')}
       </div>
-      <button class="detail-action" type="submit">Create channel</button>
-    </form>
+      <button class="detail-action" type="button">OK</button>
+    </div>
   `;
 }
 
@@ -898,27 +847,26 @@ function renderAuthenticatedUserList(view) {
 function disabledProfileForm(view) {
   emptyState.classList.remove('hidden');
   conversation.classList.add('hidden');
-  const formTitle = view.form ? view.form : 'businessProfileForm';
   emptyState.innerHTML = `
-    <form class="business-profile-form" id="businessToolForm" data-business-form="${formTitle}" data-business-title="${view.title}">
+    <div class="business-profile-form" data-disabled-safe-feature="${view.title}">
       <div class="detail-illustration"></div>
       <h2>${view.title}</h2>
       <p>${view.body}</p>
       <div class="business-fields">
         ${view.fields
           .map((field) => {
-            const value = view.form ? field.value ?? '' : businessProfileValues[field.name] ?? field.value ?? '';
+            const value = field.value ?? '';
             return `
               <label class="profile-field">
                 <span>${field.name}</span>
-                <input name="${field.name}" type="${field.type}" value="${value}" autocomplete="${field.type === 'password' ? 'new-password' : 'off'}" />
+                <input name="${field.name}" type="${field.type}" value="${value}" autocomplete="off" disabled />
               </label>
             `;
           })
           .join('')}
       </div>
-      <button class="detail-action" type="submit">${view.primaryAction}</button>
-    </form>
+      <button class="detail-action" type="button" data-action-toast="${view.title}">OK</button>
+    </div>
   `;
 }
 
@@ -1545,12 +1493,8 @@ function showContactMenu(contactId, anchor = {}) {
   menu.innerHTML = `
     <strong>${contact.name}</strong>
     <small>${getContactEmail(contact) || contact.phone || 'No contact detail saved'}</small>
-    ${
-      contact.uid
-        ? '<small class="verified-contact-note">Safe signed-in friend</small>'
-        : `<button type="button" data-contact-menu-action="edit" data-contact-id="${contact.id}">Edit name and phone</button>`
-    }
-    <button type="button" class="danger-row" data-contact-menu-action="delete-contact" data-contact-id="${contact.id}">Delete username</button>
+    <small class="verified-contact-note">Google sign-in keeps names real</small>
+    <button type="button" class="danger-row" data-contact-menu-action="delete-contact" data-contact-id="${contact.id}">Remove chat shortcut</button>
   `;
   document.body.append(menu);
 
@@ -1582,53 +1526,6 @@ function showMessageMenu(contactId, messageId, anchor = {}) {
   const top = Math.min(anchor.y ?? window.innerHeight / 2, window.innerHeight - rect.height - 12);
   menu.style.left = `${Math.max(12, left)}px`;
   menu.style.top = `${Math.max(12, top)}px`;
-}
-
-function showEditContactDialog(contactId) {
-  const contact = getContactById(contactId);
-  if (!contact) return;
-  if (contact.uid) {
-    showToast('Signed-in friend details cannot be edited here');
-    return;
-  }
-  closeContactMenu();
-  const existing = document.querySelector('.action-dialog-backdrop');
-  if (existing) existing.remove();
-
-  const backdrop = document.createElement('div');
-  backdrop.className = 'action-dialog-backdrop';
-  backdrop.innerHTML = `
-    <section class="action-dialog menu-dialog" role="dialog" aria-label="Edit contact">
-      <button class="dialog-close" aria-label="Close">x</button>
-      <form class="business-profile-form dialog-form" id="editContactForm" data-contact-id="${contact.id}">
-        ${renderContactAvatar(contact, 'small')}
-        <h2>Edit contact</h2>
-        <p>Change this username and phone number.</p>
-        <div class="business-fields">
-          <label class="profile-field">
-            <span>Friend name</span>
-            <input name="name" type="text" autocomplete="off" value="${escapeAttribute(contact.name)}" required />
-          </label>
-          <label class="profile-field">
-            <span>Phone number</span>
-            <input name="phone" type="tel" autocomplete="off" value="${escapeAttribute(contact.phone || '')}" required />
-          </label>
-          <label class="profile-field">
-            <span>Gmail</span>
-          <input name="email" type="email" autocomplete="off" value="${escapeAttribute(getContactEmail(contact))}" placeholder="friend@gmail.com" />
-          </label>
-        </div>
-        <button class="detail-action" type="submit">Save contact</button>
-      </form>
-    </section>
-  `;
-  document.body.append(backdrop);
-  backdrop.addEventListener('click', (event) => {
-    if (event.target === backdrop || event.target.closest('.dialog-close')) {
-      backdrop.remove();
-    }
-  });
-  backdrop.querySelector('input[name="name"]')?.focus();
 }
 
 function showEditMessageDialog(contactId, messageId) {
@@ -1889,13 +1786,6 @@ document.querySelectorAll('[data-notice]').forEach((notice) => {
   notice.querySelector('button').addEventListener('click', () => notice.remove());
 });
 
-channelList?.addEventListener('click', (event) => {
-  const button = event.target.closest('[data-channel-id]');
-  if (!button) return;
-  state = toggleChannelFollow(state, button.dataset.channelId);
-  renderAll();
-});
-
 document.querySelectorAll('[data-jump-section]').forEach((button) => {
   button.addEventListener('click', () => {
     activeAction = null;
@@ -1953,16 +1843,11 @@ document.addEventListener('click', (event) => {
   const contactMenuAction = event.target.closest('[data-contact-menu-action]');
   if (contactMenuAction) {
     const contactId = contactMenuAction.dataset.contactId;
-    const action = contactMenuAction.dataset.contactMenuAction;
-    if (action === 'edit') {
-      showEditContactDialog(contactId);
-      return;
-    }
     state = deleteContactChat(state, contactId);
     closeContactMenu();
     saveChatState();
     renderAll();
-    showToast('Username deleted');
+    showToast('Chat shortcut removed');
     return;
   }
 
@@ -1989,32 +1874,10 @@ document.addEventListener('click', (event) => {
     closeMessageMenu();
   }
 
-  const discoverChannel = event.target.closest('[data-discover-channel]');
-  if (discoverChannel) {
-    showToast(`Following ${discoverChannel.dataset.discoverChannel}`);
-    discoverChannel.querySelector('.follow-button').textContent = 'Following';
-    discoverChannel.querySelector('.follow-button').classList.add('following');
-    return;
-  }
-
   const settingChoice = event.target.closest('[data-setting-choice]');
   if (settingChoice) {
     showToast(`${settingChoice.dataset.settingChoiceTitle}: ${settingChoice.dataset.settingChoice}`);
     settingChoice.closest('.action-dialog-backdrop')?.remove();
-    return;
-  }
-
-  const communityExample = event.target.closest('[data-community-example]');
-  if (communityExample) {
-    showToast(`${communityExample.dataset.communityExample} opened`);
-    communityExample.querySelector('.follow-button').textContent = 'Opened';
-    communityExample.querySelector('.follow-button').classList.add('following');
-    return;
-  }
-
-  const businessListItem = event.target.closest('[data-business-list-item]');
-  if (businessListItem) {
-    showToast(`${businessListItem.dataset.businessListItem} opened`);
     return;
   }
 
@@ -2123,20 +1986,7 @@ document.addEventListener('input', (event) => {
     friendSearchQuery = friendSearchInput.value;
     const results = document.querySelector('.friend-search-results');
     if (results) results.innerHTML = renderFriendSearchRows('Ask your friend to sign in once.');
-    return;
   }
-
-  const newChatInput = event.target.closest('#newChatForm input[name="name"], #newChatForm input[name="phone"], #newChatForm input[name="email"]');
-  if (!newChatInput) return;
-
-  if (newChatInput.name === 'name') {
-    newChatDraft.name = newChatInput.value;
-  } else if (newChatInput.name === 'phone') {
-    newChatDraft.phone = newChatInput.value;
-  } else {
-    newChatDraft.email = newChatInput.value;
-  }
-  saveNewChatDraft();
 });
 
 document.addEventListener('change', (event) => {
@@ -2214,66 +2064,6 @@ document.addEventListener('submit', (event) => {
     return;
   }
 
-  const createStatusForm = event.target.closest('#createStatusForm');
-  if (createStatusForm) {
-    event.preventDefault();
-    const formData = new FormData(createStatusForm);
-    for (const [key, value] of formData.entries()) {
-      statusValues[key] = String(value);
-    }
-    showToast('Status posted');
-    renderAll();
-    return;
-  }
-
-  const createChannelForm = event.target.closest('#createChannelForm');
-  if (createChannelForm) {
-    event.preventDefault();
-    const formData = new FormData(createChannelForm);
-    for (const [key, value] of formData.entries()) {
-      createdChannelValues[key] = String(value);
-    }
-    showToast(`Channel created: ${createdChannelValues['Channel name']}`);
-    renderAll();
-    return;
-  }
-
-  const newChatForm = event.target.closest('#newChatForm');
-  if (newChatForm) {
-    event.preventDefault();
-    showToast('Choose a signed-in friend');
-    return;
-  }
-
-  const editContactForm = event.target.closest('#editContactForm');
-  if (editContactForm) {
-    event.preventDefault();
-    const contact = getContactById(editContactForm.dataset.contactId);
-    if (contact?.uid) {
-      showToast('Signed-in friend details cannot be edited here');
-      editContactForm.closest('.action-dialog-backdrop')?.remove();
-      return;
-    }
-    const formData = new FormData(editContactForm);
-    const name = String(formData.get('name') ?? '');
-    const phone = String(formData.get('phone') ?? '');
-    const email = String(formData.get('email') ?? '');
-    if (!name.trim() || !phone.trim()) {
-      showToast('Enter name and phone number');
-      return;
-    }
-    if (email.trim() && !email.includes('@')) {
-      showToast('Enter a valid Gmail address');
-      return;
-    }
-    state = updateContactChat(state, editContactForm.dataset.contactId, { name, phone, email });
-    saveChatState();
-    editContactForm.closest('.action-dialog-backdrop')?.remove();
-    renderAll();
-    showToast('Contact saved');
-    return;
-  }
-
   const editMessageForm = event.target.closest('#editMessageForm');
   if (editMessageForm) {
     event.preventDefault();
@@ -2293,20 +2083,6 @@ document.addEventListener('submit', (event) => {
     editMessageForm.closest('.action-dialog-backdrop')?.remove();
     renderAll();
     showToast('Message saved');
-    return;
-  }
-
-  const businessForm = event.target.closest('#businessToolForm');
-  if (businessForm) {
-    event.preventDefault();
-    const formData = new FormData(businessForm);
-    if (businessForm.dataset.businessForm === 'businessProfileForm') {
-      for (const [key, value] of formData.entries()) {
-        businessProfileValues[key] = String(value);
-      }
-    }
-    showToast(`${businessForm.dataset.businessTitle} saved`);
-    renderAll();
     return;
   }
 
