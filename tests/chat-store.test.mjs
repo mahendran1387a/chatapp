@@ -346,10 +346,11 @@ test('filters signed-in users locally for automatic discovery', async () => {
   assert.equal(typeof store.filterAuthenticatedUsers, 'function');
 
   const users = [
-    { uid: 'uid-me', email: 'me@gmail.com', displayName: 'Me' },
-    { uid: 'uid-aisha', email: 'aisha.friend@gmail.com', displayName: 'Aisha Friend' },
-    { uid: 'uid-rohan', email: 'rohan.home@gmail.com', displayName: 'Rohan Home' },
-    { uid: 'uid-dupe', email: 'AISHA.friend@gmail.com', displayName: 'Aisha Duplicate' }
+    { uid: 'uid-me', email: 'me@gmail.com', displayName: 'Me', approved: true },
+    { uid: 'uid-aisha', email: 'aisha.friend@gmail.com', displayName: 'Aisha Friend', approved: true },
+    { uid: 'uid-rohan', email: 'rohan.home@gmail.com', displayName: 'Rohan Home', approved: true },
+    { uid: 'uid-pending', email: 'pending.home@gmail.com', displayName: 'Pending Friend', approved: false },
+    { uid: 'uid-dupe', email: 'AISHA.friend@gmail.com', displayName: 'Aisha Duplicate', approved: true }
   ];
 
   const allFriends = store.filterAuthenticatedUsers(users, 'uid-me', '');
@@ -359,6 +360,26 @@ test('filters signed-in users locally for automatic discovery', async () => {
   assert.deepEqual(allFriends.map((user) => user.uid), ['uid-aisha', 'uid-rohan']);
   assert.deepEqual(byName.map((user) => user.uid), ['uid-aisha']);
   assert.deepEqual(byHiddenEmail.map((user) => user.uid), ['uid-rohan']);
+});
+
+test('friends screen shows automatic approved users before invite-by-email', () => {
+  for (const relativePath of [
+    '../src/app.js',
+    '../android/app/src/main/assets/www/src/app.js'
+  ]) {
+    const contents = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
+    const formStart = contents.indexOf('function renderFriendSearchForm');
+    const formEnd = contents.indexOf('function renderFriendsInvitesPanel');
+    const formTemplate = contents.slice(formStart, formEnd);
+    const autoListIndex = formTemplate.indexOf('renderFriendSearchRows(autoListMessage)');
+    const inviteIndex = formTemplate.indexOf('renderInviteFamilyForm()');
+
+    assert.ok(autoListIndex !== -1);
+    assert.ok(inviteIndex !== -1);
+    assert.ok(autoListIndex < inviteIndex);
+    assert.match(contents, /Everyone approved appears automatically/);
+    assert.doesNotMatch(contents, /Use Invite Family, then approve them after they sign in/);
+  }
 });
 
 test('marks the latest chat message as deleted from the chat list', () => {

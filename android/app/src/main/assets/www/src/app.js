@@ -838,10 +838,8 @@ function renderFriendSearchForm(autoListMessage) {
   return `
     <div class="invite-friend-intro">
       <h3>Find Friends</h3>
-      <p>Only approved family and friends can chat here. Search filters the approved list.</p>
+      <p>Everyone approved appears automatically. Search only filters this list.</p>
     </div>
-    ${renderCreateGroupButton()}
-    ${renderInviteFamilyForm()}
     <div class="friend-search-form" id="friendSearchForm">
       <label class="friend-search">
         <span>Search friends</span>
@@ -851,7 +849,9 @@ function renderFriendSearchForm(autoListMessage) {
     <div class="auth-user-list friend-search-results">
       ${renderFriendSearchRows(autoListMessage)}
     </div>
+    ${renderCreateGroupButton()}
     ${renderPendingFamilyRows()}
+    ${renderInviteFamilyForm()}
   `;
 }
 
@@ -863,7 +863,7 @@ function renderFriendsInvitesPanel() {
         <h3>Friends & Invites</h3>
         <p>Approved and invited family members appear here automatically after Google sign-in.</p>
       </div>
-      ${renderFriendSearchForm('No approved family yet. Use Invite Family, then approve them after they sign in.')}
+      ${renderFriendSearchForm('No approved family yet. Ask them to sign in once, then approve them here.')}
     </div>
   `;
 }
@@ -876,7 +876,7 @@ function renderAuthenticatedUserList(view) {
       <div class="detail-illustration"></div>
       <h2>${view.title}</h2>
       <p>Pick an approved family member or friend to start chatting.</p>
-      ${renderFriendSearchForm('No approved family yet. Use Invite Family, then approve them after they sign in.')}
+      ${renderFriendSearchForm('No approved family yet. Ask them to sign in once, then approve them here.')}
     </div>
   `;
 }

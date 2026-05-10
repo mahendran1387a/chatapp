@@ -571,7 +571,9 @@ export function filterAuthenticatedUsers(users = [], currentUid = '', query = ''
   return users
     .filter((user) => {
       const email = normalizeUserEmail(user);
-      if (!user?.uid || user.uid === currentUid || !email || seenEmails.has(email)) return false;
+      if (!user?.uid || user.uid === currentUid || user.approved === false || !email || seenEmails.has(email)) {
+        return false;
+      }
       seenEmails.add(email);
       if (!needle) return true;
       const name = getUserDisplayName(user).toLowerCase();
