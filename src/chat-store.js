@@ -88,6 +88,13 @@ const actionViews = {
     points: ['Signed-in friends', 'Online status', 'Safe text chat'],
     form: 'newChat'
   },
+  createGroup: {
+    title: 'Create Group',
+    body: 'Choose at least two signed-in friends and give the group a friendly name.',
+    primaryAction: 'Create group',
+    points: ['Signed-in friends', 'Text chat', 'Kid-safe group'],
+    form: 'createGroup'
+  },
   chatMenu: {
     title: 'Chat menu',
     body: 'Kid-safe actions for your chat list.',
@@ -600,6 +607,52 @@ function buildAuthenticatedContact(user, existingContact = {}) {
   };
 }
 
+function getGroupName(group) {
+  return group.groupName?.trim() || group.name?.trim() || 'Family Group';
+}
+
+function getGroupAvatar(group) {
+  return getGroupName(group)
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase();
+}
+
+function normalizeGroupMembers(group) {
+  return Array.isArray(group.members)
+    ? [...new Set(group.members.filter((uid) => typeof uid === 'string' && uid.trim()).map((uid) => uid.trim()))]
+    : [];
+}
+
+function buildGroupContact(group, existingContact = {}) {
+  const name = getGroupName(group);
+  const memberUids = normalizeGroupMembers(group);
+  return {
+    ...existingContact,
+    id: group.id,
+    groupId: group.id,
+    name,
+    email: '',
+    phone: '',
+    avatar: getGroupAvatar(group),
+    color: existingContact.color ?? '#7b4dff',
+    textColor: existingContact.textColor ?? '#ffffff',
+    preview: existingContact.messages?.at(-1)?.deleted
+      ? 'This message was deleted'
+      : existingContact.messages?.at(-1)?.text ?? `${memberUids.length} members`,
+    time: existingContact.time ?? 'Now',
+    unread: existingContact.unread ?? 0,
+    favorite: existingContact.favorite ?? false,
+    group: true,
+    memberUids,
+    createdBy: group.createdBy ?? existingContact.createdBy ?? '',
+    messages: existingContact.messages ?? []
+  };
+}
+
 function withContactProfile(contact) {
   const email = typeof contact.email === 'string' && contact.email.trim()
     ? contact.email.trim()
@@ -629,10 +682,14 @@ export function createAuthenticatedContact(state, user) {
   };
 }
 
-export function reconcileAuthenticatedContacts(state, users = [], currentUid = '') {
+export function reconcileAuthenticatedContacts(state, users = [], currentUid = '', groups = []) {
   const authenticatedUsers = filterAuthenticatedUsers(users, currentUid);
   const existingById = new Map(state.contacts.map((contact) => [contact.id, contact]));
-  const contacts = authenticatedUsers.map((user) => buildAuthenticatedContact(user, existingById.get(user.uid)));
+  const userContacts = authenticatedUsers.map((user) => buildAuthenticatedContact(user, existingById.get(user.uid)));
+  const groupContacts = groups
+    .filter((group) => group?.id && normalizeGroupMembers(group).includes(currentUid))
+    .map((group) => buildGroupContact(group, existingById.get(group.id)));
+  const contacts = [...userContacts, ...groupContacts];
   const activeContactId = contacts.some((contact) => contact.id === state.activeContactId)
     ? state.activeContactId
     : contacts[0]?.id;

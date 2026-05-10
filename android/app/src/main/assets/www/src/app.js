@@ -21,19 +21,23 @@ import {
 } from './chat-store.js';
 import {
   approveFamilyMember,
+  createFirebaseGroup,
   getFirebaseSetupStatus,
   isFamilyOwnerEmail,
   logoutGoogleUser,
   saveUserProfile,
   sendFamilyInvite,
   sendFirebaseMessage,
+  sendFirebaseGroupMessage,
   setUserOnlineStatus,
   signInWithGoogle,
   startAuthListener,
   subscribeAuthenticatedUsers,
   subscribeCurrentUserProfile,
+  subscribeGroupMessages,
   subscribePendingFamilyUsers,
-  subscribeConversationMessages
+  subscribeConversationMessages,
+  subscribeUserGroups
 } from './firebase-chat.js';
 
 const savedChatStorageKey = 'chatapp.savedChats.v1';
@@ -212,12 +216,14 @@ let authReady = false;
 let authError = '';
 let chatsLoading = false;
 let authenticatedUsers = [];
+let firebaseGroups = [];
 let pendingFamilyUsers = [];
 let currentUserProfile = null;
 let unsubscribeUsers = () => {};
 let unsubscribeCurrentUserProfile = () => {};
 let unsubscribePendingFamilyUsers = () => {};
 let unsubscribeConversation = () => {};
+let unsubscribeGroups = () => {};
 let subscribedConversationContactId = '';
 let familyListsStarted = false;
 let settingsSearchQuery = '';
@@ -226,6 +232,7 @@ let currentPresenceStatus = '';
 let isLoggedOut = false;
 let mobileConversationOpen = false;
 let restoreSelectedChatOnLoad = Boolean(savedInitialChatState.activeContactId);
+let selectedGroupMemberIds = new Set();
 const settingSwitches = new Map();
 const profileValues = loadProfileValues();
 const businessProfileValues = {
@@ -341,6 +348,18 @@ function renderPresenceStatus(onlineStatus, extraClass = '') {
   return `<span class="presence-status ${statusClass} ${extraClass}">${getPresenceStatusLabel(statusClass)}</span>`;
 }
 
+function getGroupMemberLabel(contact) {
+  const count = Array.isArray(contact.memberUids) ? contact.memberUids.length : 0;
+  return `${count} member${count === 1 ? '' : 's'}`;
+}
+
+function renderContactStatus(contact, extraClass = '') {
+  if (contact?.group) {
+    return `<span class="presence-status group ${extraClass}">${getGroupMemberLabel(contact)}</span>`;
+  }
+  return renderPresenceStatus(contact?.onlineStatus, extraClass);
+}
+
 function isCurrentUserOwner() {
   return isFamilyOwnerEmail(currentAuthUser?.email);
 }
@@ -422,7 +441,7 @@ function renderLoadingChats() {
 function hasSelectedChat() {
   if (!currentAuthUser || !isCurrentUserApproved()) return false;
   const contact = getActiveContact(state);
-  return Boolean(contact?.uid);
+  return Boolean(contact?.uid || contact?.groupId);
 }
 
 function renderNoChatSelected() {
@@ -487,6 +506,12 @@ function requireAuth() {
 function renderDetailView(view, type = 'action') {
   if (view.form === 'newChat') {
     renderAuthenticatedUserList(view);
+    return;
+  }
+  if (view.form === 'createGroup') {
+    emptyState.classList.remove('hidden');
+    conversation.classList.add('hidden');
+    emptyState.innerHTML = renderCreateGroupForm();
     return;
   }
   if (view.menuItems) {
@@ -694,6 +719,10 @@ function getFilteredAuthenticatedUsers() {
   return filterAuthenticatedUsers(authenticatedUsers, currentAuthUser?.uid ?? '', friendSearchQuery);
 }
 
+function getGroupCandidateUsers() {
+  return filterAuthenticatedUsers(authenticatedUsers, currentAuthUser?.uid ?? '', '');
+}
+
 function renderAuthenticatedUserRows(users, emptyMessage) {
   return users.length
     ? users.map(renderAuthenticatedUserRow).join('')
@@ -745,12 +774,53 @@ function renderInviteFamilyForm() {
   `;
 }
 
+function renderCreateGroupButton() {
+  return '<button class="friend-search-button create-group-shortcut" type="button" data-action="createGroup">+ Create Group</button>';
+}
+
+function renderGroupMemberChoice(user) {
+  const checked = selectedGroupMemberIds.has(user.uid) ? 'checked' : '';
+  return `
+    <label class="group-member-choice">
+      <input type="checkbox" data-group-member name="members" value="${escapeAttribute(user.uid)}" ${checked} />
+      ${renderUserPhoto(user, 'small')}
+      <span>
+        <strong>${escapeHtml(getUserName(user))}</strong>
+        <small>${renderPresenceStatus(user.onlineStatus, 'mini')}</small>
+      </span>
+    </label>
+  `;
+}
+
+function renderCreateGroupForm() {
+  const users = getGroupCandidateUsers();
+  const canCreate = users.length >= 2;
+  return `
+    <form class="business-profile-form create-group-form" id="createGroupForm">
+      <div class="detail-illustration"></div>
+      <h2>Create Group</h2>
+      <p>Choose at least 2 friends, then start a safe group chat.</p>
+      <label class="profile-field">
+        <span>Group name</span>
+        <input name="groupName" type="text" autocomplete="off" maxlength="40" placeholder="Family Team" required />
+      </label>
+      <div class="group-member-list" aria-label="Choose group friends">
+        ${canCreate
+          ? users.map(renderGroupMemberChoice).join('')
+          : '<p class="empty-copy">Ask at least 2 approved friends to sign in first.</p>'}
+      </div>
+      <button class="detail-action" type="submit" ${canCreate ? '' : 'disabled'}>Create Group</button>
+    </form>
+  `;
+}
+
 function renderFriendSearchForm(autoListMessage) {
   return `
     <div class="invite-friend-intro">
       <h3>Find Friends</h3>
       <p>Only approved family and friends can chat here. Search filters the approved list.</p>
     </div>
+    ${renderCreateGroupButton()}
     ${renderInviteFamilyForm()}
     <div class="friend-search-form" id="friendSearchForm">
       <label class="friend-search">
@@ -1024,8 +1094,15 @@ function renderChats() {
 
   const query = searchInput.value.trim();
   const heading = query ? 'Search results' : 'Recent chats';
+  const isGroupsFilter = currentFilter === 'groups';
+  const emptyMessage = isGroupsFilter
+    ? 'No groups yet. Create one with at least 2 friends.'
+    : authenticatedUsers.length > 1
+      ? 'Pick a friend or create a group to start chatting.'
+      : 'Ask your friend to sign in once.';
   chatList.innerHTML = `
     <h2 class="chat-section-heading">${heading}</h2>
+    ${isGroupsFilter ? `<div class="group-list-action">${renderCreateGroupButton()}</div>` : ''}
     ${
       contacts.length
         ? contacts
@@ -1038,7 +1115,7 @@ function renderChats() {
               <span class="chat-title-row">
                 <span class="chat-name-wrap">
                   <span class="chat-name">${contact.name}</span>
-                  ${renderPresenceStatus(contact.onlineStatus, 'compact')}
+                  ${renderContactStatus(contact, 'compact')}
                 </span>
                 <span class="chat-time">${contact.time}</span>
               </span>
@@ -1050,14 +1127,14 @@ function renderChats() {
       `
             )
             .join('')
-        : '<p class="empty-copy chat-list-empty">Ask your friend to sign in once.</p>'
+        : `<p class="empty-copy chat-list-empty">${emptyMessage}</p>`
     }
   `;
 }
 
 function renderConversation() {
   const contact = getActiveContact(state);
-  if (!contact?.uid) {
+  if (!contact?.uid && !contact?.groupId) {
     renderNoChatSelected();
     return;
   }
@@ -1070,7 +1147,7 @@ function renderConversation() {
       ${renderContactAvatar(contact, 'small')}
       <span class="conversation-title">
         <strong>${contact.name}</strong>
-        <small>${renderPresenceStatus(contact.onlineStatus)}</small>
+        <small>${renderContactStatus(contact)}</small>
       </span>
       <span class="conversation-actions">
         <button title="Voice call" aria-label="Voice call" data-action="voiceCall">Call</button>
@@ -1086,7 +1163,11 @@ function renderConversation() {
                 : 'in'
               : message.direction;
             const readBy = Array.isArray(message.readBy) ? message.readBy : [];
-            const isRead = direction === 'out' && Boolean(contact.uid && readBy.includes(contact.uid));
+            const otherGroupMembers = Array.isArray(contact.memberUids)
+              ? contact.memberUids.filter((uid) => uid !== currentAuthUser?.uid)
+              : [];
+            const isGroupRead = Boolean(contact.groupId && otherGroupMembers.length && otherGroupMembers.every((uid) => readBy.includes(uid)));
+            const isRead = direction === 'out' && (contact.uid ? readBy.includes(contact.uid) : isGroupRead);
             const status = direction === 'out'
               ? `<span class="message-status ${isRead ? 'read' : 'sent'}" title="${isRead ? 'Read' : 'Sent'}">${isRead ? '✓✓' : '✓'}</span>`
               : '';
@@ -1147,12 +1228,16 @@ function renderConversation() {
     const input = conversation.querySelector('#messageInput');
     const text = input.value;
     const activeContact = getActiveContact(state);
-    if (!activeContact?.uid) {
-      showToast('Choose a signed-in friend first.');
+    if (!activeContact?.uid && !activeContact?.groupId) {
+      showToast('Choose a signed-in friend or group first.');
       return;
     }
     try {
-      await sendFirebaseMessage(activeContact.uid, text, currentAuthUser);
+      if (activeContact.groupId) {
+        await sendFirebaseGroupMessage(activeContact.groupId, text, currentAuthUser);
+      } else {
+        await sendFirebaseMessage(activeContact.uid, text, currentAuthUser);
+      }
     } catch (error) {
       showToast(error.message);
       return;
@@ -1293,30 +1378,35 @@ function openKidProfilePage() {
 
 function subscribeActiveConversation() {
   const activeContact = getActiveContact(state);
-  if (!currentAuthUser || !activeContact?.uid || subscribedConversationContactId === activeContact.uid) return;
+  const subscriptionKey = activeContact?.groupId
+    ? `group:${activeContact.groupId}`
+    : activeContact?.uid
+      ? `user:${activeContact.uid}`
+      : '';
+  if (!currentAuthUser || !subscriptionKey || subscribedConversationContactId === subscriptionKey) return;
   unsubscribeConversation();
-  subscribedConversationContactId = activeContact.uid;
-  unsubscribeConversation = subscribeConversationMessages(
-    currentAuthUser.uid,
-    activeContact.uid,
-    (messages) => {
+  subscribedConversationContactId = subscriptionKey;
+  const applyMessages = (messages) => {
       state = {
         ...state,
         contacts: state.contacts.map((contact) =>
-          contact.id === activeContact.uid
+          contact.id === activeContact.id
             ? {
                 ...contact,
                 messages,
-                preview: messages.at(-1)?.deleted ? 'This message was deleted' : messages.at(-1)?.text ?? contact.email,
+                preview: messages.at(-1)?.deleted
+                  ? 'This message was deleted'
+                  : messages.at(-1)?.text ?? (contact.group ? getGroupMemberLabel(contact) : contact.email),
                 time: messages.at(-1)?.time ?? contact.time
               }
             : contact
         )
       };
       if (!isTextEntryActive()) renderAll();
-    },
-    (error) => showToast(error.message)
-  );
+  };
+  unsubscribeConversation = activeContact.groupId
+    ? subscribeGroupMessages(activeContact.groupId, currentAuthUser.uid, applyMessages, (error) => showToast(error.message))
+    : subscribeConversationMessages(currentAuthUser.uid, activeContact.uid, applyMessages, (error) => showToast(error.message));
 }
 
 function renderAll() {
@@ -1635,6 +1725,13 @@ function showActionDialog(view) {
           <p>Pick a signed-in friend to start chatting.</p>
           ${renderFriendSearchForm('Ask your friend to sign in once.')}
         </div>
+      </section>
+    `;
+  } else if (view.form === 'createGroup') {
+    backdrop.innerHTML = `
+      <section class="action-dialog menu-dialog" role="dialog" aria-label="${view.title}">
+        <button class="dialog-close" aria-label="Close">x</button>
+        ${renderCreateGroupForm()}
       </section>
     `;
   } else {
@@ -2018,6 +2115,16 @@ document.addEventListener('input', (event) => {
   saveNewChatDraft();
 });
 
+document.addEventListener('change', (event) => {
+  const groupMemberInput = event.target.closest('[data-group-member]');
+  if (!groupMemberInput) return;
+  if (groupMemberInput.checked) {
+    selectedGroupMemberIds.add(groupMemberInput.value);
+  } else {
+    selectedGroupMemberIds.delete(groupMemberInput.value);
+  }
+});
+
 document.addEventListener('keydown', (event) => {
   if ((event.key === 'Enter' || event.key === ' ') && event.target.closest('[data-open-profile]')) {
     event.preventDefault();
@@ -2040,6 +2147,38 @@ document.addEventListener('submit', (event) => {
       .then(() => {
         familyInviteForm.reset();
         showToast('Invite saved. Ask them to sign in once.');
+      })
+      .catch((error) => showToast(error.message));
+    return;
+  }
+
+  const createGroupForm = event.target.closest('#createGroupForm');
+  if (createGroupForm) {
+    event.preventDefault();
+    if (!requireAuth()) return;
+    const formData = new FormData(createGroupForm);
+    const groupName = String(formData.get('groupName') ?? '');
+    const memberUids = [...createGroupForm.querySelectorAll('[data-group-member]:checked')]
+      .map((item) => item.value);
+    selectedGroupMemberIds = new Set(memberUids);
+    if (selectedGroupMemberIds.size < 2) {
+      showToast('Choose at least 2 friends.');
+      return;
+    }
+    createFirebaseGroup({ groupName, memberUids }, currentAuthUser)
+      .then((group) => {
+        firebaseGroups = [group, ...firebaseGroups.filter((item) => item.id !== group.id)];
+        state = reconcileAuthenticatedContacts(state, authenticatedUsers, currentAuthUser.uid, firebaseGroups);
+        state = selectContact(state, group.id);
+        selectedGroupMemberIds = new Set();
+        activeAction = null;
+        currentFilter = 'groups';
+        filters.forEach((button) => button.classList.toggle('active', button.dataset.filter === 'groups'));
+        mobileConversationOpen = true;
+        createGroupForm.closest('.action-dialog-backdrop')?.remove();
+        saveChatState();
+        renderAll();
+        showToast('Group created');
       })
       .catch((error) => showToast(error.message));
     return;
@@ -2174,16 +2313,32 @@ function updateCurrentPresence(onlineStatus) {
   renderSignedInUser();
 }
 
+function syncApprovedFamilyContacts(user) {
+  state = reconcileAuthenticatedContacts(state, authenticatedUsers, user.uid, firebaseGroups);
+  chatsLoading = false;
+  saveChatState();
+  renderAll();
+}
+
 function startApprovedFamilyLists(user) {
   if (familyListsStarted) return;
   familyListsStarted = true;
   unsubscribeUsers = subscribeAuthenticatedUsers(
     (users) => {
       authenticatedUsers = users;
-      state = reconcileAuthenticatedContacts(state, users, user.uid);
+      syncApprovedFamilyContacts(user);
+    },
+    (error) => {
       chatsLoading = false;
-      saveChatState();
+      showToast(error.message);
       renderAll();
+    }
+  );
+  unsubscribeGroups = subscribeUserGroups(
+    user.uid,
+    (groups) => {
+      firebaseGroups = groups;
+      syncApprovedFamilyContacts(user);
     },
     (error) => {
       chatsLoading = false;
@@ -2223,13 +2378,16 @@ function startFirebaseAuth() {
       unsubscribeCurrentUserProfile();
       unsubscribePendingFamilyUsers();
       unsubscribeConversation();
+      unsubscribeGroups();
       familyListsStarted = false;
       subscribedConversationContactId = '';
       if (!user) {
         authenticatedUsers = [];
+        firebaseGroups = [];
         pendingFamilyUsers = [];
         currentUserProfile = null;
         friendSearchQuery = '';
+        selectedGroupMemberIds = new Set();
         currentPresenceStatus = '';
         restoreSelectedChatOnLoad = Boolean(state.activeContactId);
         chatsLoading = false;
@@ -2251,8 +2409,9 @@ function startFirebaseAuth() {
             startApprovedFamilyLists(user);
           } else {
             authenticatedUsers = [];
+            firebaseGroups = [];
             pendingFamilyUsers = [];
-            state = reconcileAuthenticatedContacts(state, [], user.uid);
+            state = reconcileAuthenticatedContacts(state, [], user.uid, []);
             chatsLoading = false;
           }
           renderAll();

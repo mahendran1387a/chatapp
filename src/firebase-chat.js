@@ -263,6 +263,74 @@ export async function approveFamilyMember(uid, user) {
   }, { merge: true });
 }
 
+function normalizeGroupMembers(memberUids = [], currentUid = '') {
+  return [...new Set([currentUid, ...memberUids].filter((uid) => typeof uid === 'string' && uid.trim()))];
+}
+
+function mapMessageDoc(item, currentUid, readTargetUid = '') {
+  const data = item.data();
+  const readBy = Array.isArray(data.readBy) ? data.readBy : [];
+  return {
+    id: item.id,
+    text: data.text,
+    direction: data.senderUid === currentUid ? 'out' : 'in',
+    senderUid: data.senderUid,
+    senderEmail: data.senderEmail,
+    senderDisplayName: data.senderDisplayName,
+    senderPhotoURL: data.senderPhotoURL,
+    readBy,
+    read: readTargetUid ? readBy.includes(readTargetUid) : false,
+    timestamp: data.timestamp?.toMillis?.() ?? Date.now(),
+    time: data.timestamp?.toDate?.().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) ?? 'Now',
+    deleted: data.deleted === true
+  };
+}
+
+export async function createFirebaseGroup({ groupName, memberUids = [] }, user) {
+  const firebase = ensureFirebase();
+  const cleanName = groupName.trim();
+  if (!firebase) throw new Error('Firebase is not ready yet.');
+  if (!user?.uid) throw new Error('Please sign in again before creating a group.');
+  if (!cleanName) throw new Error('Give your group a name.');
+  if (memberUids.length < 2) throw new Error('Choose at least 2 friends for a group.');
+
+  const members = normalizeGroupMembers(memberUids, user.uid);
+  if (members.length < 3) throw new Error('Choose at least 2 friends for a group.');
+
+  const group = {
+    groupName: cleanName,
+    members,
+    createdBy: user.uid,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+  const groupRef = await addDoc(collection(firebase.db, 'groups'), group);
+  return { id: groupRef.id, ...group, createdAt: Date.now(), updatedAt: Date.now() };
+}
+
+export function subscribeUserGroups(currentUid, onGroups, onError) {
+  const firebase = ensureFirebase();
+  if (!firebase || !currentUid) {
+    onGroups([]);
+    return () => {};
+  }
+
+  return onSnapshot(
+    query(collection(firebase.db, 'groups'), where('members', 'array-contains', currentUid)),
+    (snapshot) => {
+      const groups = snapshot.docs
+        .map((item) => ({ id: item.id, ...item.data() }))
+        .sort((first, second) => {
+          const firstUpdated = first.updatedAt?.toMillis?.() ?? 0;
+          const secondUpdated = second.updatedAt?.toMillis?.() ?? 0;
+          return secondUpdated - firstUpdated;
+        });
+      onGroups(groups);
+    },
+    (error) => onError?.(error)
+  );
+}
+
 export function getConversationId(firstUid, secondUid) {
   return [firstUid, secondUid].sort().join('_');
 }
@@ -312,20 +380,61 @@ export function subscribeConversationMessages(currentUid, contactUid, onMessages
         if (data.senderUid !== currentUid && !readBy.includes(currentUid)) {
           updateDoc(item.ref, { readBy: arrayUnion(currentUid) }).catch((error) => onError?.(error));
         }
-        return {
-          id: item.id,
-          text: data.text,
-          direction: data.senderUid === currentUid ? 'out' : 'in',
-          senderUid: data.senderUid,
-          senderEmail: data.senderEmail,
-          senderDisplayName: data.senderDisplayName,
-          senderPhotoURL: data.senderPhotoURL,
-          readBy,
-          read: readBy.includes(contactUid),
-          timestamp: data.timestamp?.toMillis?.() ?? Date.now(),
-          time: data.timestamp?.toDate?.().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) ?? 'Now',
-          deleted: data.deleted === true
-        };
+        return mapMessageDoc(item, currentUid, contactUid);
+      });
+      onMessages(messages);
+    },
+    (error) => onError?.(error)
+  );
+}
+
+export async function sendFirebaseGroupMessage(groupId, text, user) {
+  const firebase = ensureFirebase();
+  const cleanText = text.trim();
+  if (!firebase) throw new Error('Firebase is not ready yet.');
+  if (!user?.uid) throw new Error('Please sign in again before chatting.');
+  if (!groupId) throw new Error('Choose a group first.');
+  if (!cleanText) return null;
+
+  const groupRef = doc(firebase.db, 'groups', groupId);
+  const groupSnapshot = await getDoc(groupRef);
+  const group = groupSnapshot.exists() ? groupSnapshot.data() : null;
+  if (!Array.isArray(group?.members) || !group.members.includes(user.uid)) {
+    throw new Error('You are not a member of this group.');
+  }
+
+  const payload = {
+    text: cleanText,
+    senderUid: user.uid,
+    senderEmail: user.email ?? '',
+    senderDisplayName: user.displayName ?? user.email ?? 'Google user',
+    senderPhotoURL: user.photoURL ?? '',
+    readBy: [user.uid],
+    timestamp: serverTimestamp()
+  };
+
+  await updateDoc(groupRef, { updatedAt: serverTimestamp() });
+  await addDoc(collection(firebase.db, 'groups', groupId, 'messages'), payload);
+  return payload;
+}
+
+export function subscribeGroupMessages(groupId, currentUid, onMessages, onError) {
+  const firebase = ensureFirebase();
+  if (!firebase || !groupId || !currentUid) {
+    onMessages([]);
+    return () => {};
+  }
+
+  return onSnapshot(
+    query(collection(firebase.db, 'groups', groupId, 'messages'), orderBy('timestamp')),
+    (snapshot) => {
+      const messages = snapshot.docs.map((item) => {
+        const data = item.data();
+        const readBy = Array.isArray(data.readBy) ? data.readBy : [];
+        if (data.senderUid !== currentUid && !readBy.includes(currentUid)) {
+          updateDoc(item.ref, { readBy: arrayUnion(currentUid) }).catch((error) => onError?.(error));
+        }
+        return mapMessageDoc(item, currentUid);
       });
       onMessages(messages);
     },
