@@ -274,7 +274,9 @@ function isUserInGroup(group, uid) {
 }
 
 function mapGroupSnapshot(snapshot) {
-  return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+  return snapshot.docs
+    .map((item) => ({ id: item.id, ...item.data() }))
+    .filter((data) => data.type === 'group');
 }
 
 function getGroupCreatedTime(group) {
@@ -357,12 +359,10 @@ export function subscribeUserGroups(currentUid, onGroups, onError) {
   const groupCollection = collection(firebase.db, 'groups');
   const memberGroupsQuery = query(
     groupCollection,
-    where('type', '==', 'group'),
     where('members', 'array-contains', currentUid)
   );
   const participantGroupsQuery = query(
     groupCollection,
-    where('type', '==', 'group'),
     where('participants', 'array-contains', currentUid)
   );
 

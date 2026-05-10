@@ -135,9 +135,10 @@ test('Firebase group helpers and rules protect group membership and sender ident
   assert.match(firebase, /console\.error\('\[Kids WhatsApp\] Group create failed'/);
   assert.match(firebase, /groupRef\.path/);
   assert.doesNotMatch(firebase, /updateDoc\(groupRef,\s*\{\s*updatedAt/s);
-  assert.match(firebase, /where\('type', '==', 'group'\)/);
+  assert.doesNotMatch(firebase, /where\('type', '==', 'group'\)/);
   assert.match(firebase, /where\('members', 'array-contains', currentUid\)/);
   assert.match(firebase, /where\('participants', 'array-contains', currentUid\)/);
+  assert.match(firebase, /data\.type === 'group'/);
   assert.match(firebase, /mergeFirebaseGroups/);
   assert.match(firebase, /isUserInGroup/);
   assert.match(firebase, /sendFirebaseGroupMessage/);
@@ -145,7 +146,7 @@ test('Firebase group helpers and rules protect group membership and sender ident
   assert.match(rules, /match \/groups\/\{groupId\}/);
   assert.match(rules, /validGroupCreate\(\)/);
   assert.match(rules, /'type'/);
-  assert.match(rules, /type == 'group'/);
+  assert.match(rules, /request\.resource\.data\.type == 'group'/);
   assert.match(rules, /participants/);
   assert.match(rules, /groupHasSignedInUser/);
   assert.match(rules, /participants\.hasAny\(\[request\.auth\.uid\]\)/);

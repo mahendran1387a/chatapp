@@ -149,11 +149,8 @@ service cloud.firestore {
     }
 
     function groupHasSignedInUser(data) {
-      return data.type == 'group'
-        && (
-          (data.members is list && data.members.hasAny([request.auth.uid])) ||
-          (data.participants is list && data.participants.hasAny([request.auth.uid]))
-        );
+      return (data.members is list && data.members.hasAny([request.auth.uid])) ||
+        (data.participants is list && data.participants.hasAny([request.auth.uid]));
     }
 
     function userIsGroupParticipant() {
