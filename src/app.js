@@ -737,8 +737,8 @@ function renderAuthenticatedUserRows(users, emptyMessage) {
 function renderFriendSearchRows(emptyMessage) {
   const users = getFilteredAuthenticatedUsers();
   const query = friendSearchQuery.trim();
-  const title = query ? 'Search results' : 'Approved family & friends';
-  const noMatch = query ? 'No friend matched that search.' : emptyMessage;
+  const title = query ? 'Search results' : 'Available users';
+  const noMatch = query ? 'No approved friend matched that search.' : emptyMessage;
   return `
     <h3 class="user-list-heading">${title}</h3>
     ${renderAuthenticatedUserRows(users, noMatch)}
@@ -775,7 +775,7 @@ function renderPendingFamilyRows() {
   const rows = [...approvalRows, ...inviteRows];
   return `
     <div class="auth-user-list pending-family-list">
-      <h3 class="user-list-heading">Invited or waiting for approval</h3>
+      <h3 class="user-list-heading">Pending invites</h3>
       ${rows.length ? rows.join('') : '<p class="empty-copy">No invited or waiting people right now.</p>'}
     </div>
   `;
@@ -786,7 +786,7 @@ function renderInviteFamilyForm() {
   return `
     <form class="friend-search-form family-invite-form" data-family-invite-form>
       <label class="friend-search">
-        <span>Invite Family</span>
+        <span>Invite by Gmail</span>
         <input data-family-invite-email name="email" type="email" autocomplete="off" placeholder="family@gmail.com" />
       </label>
       <button class="friend-search-button" type="submit">Send invite</button>
@@ -861,9 +861,9 @@ function renderFriendsInvitesPanel() {
     <div class="friends-invites-shell">
       <div class="invite-friend-intro">
         <h3>Friends & Invites</h3>
-        <p>Approved and invited family members appear here automatically after Google sign-in.</p>
+        <p>Approved friends, pending invites, and Gmail invites live here.</p>
       </div>
-      ${renderFriendSearchForm('No approved family yet. Ask them to sign in once, then approve them here.')}
+      ${renderFriendSearchForm('No approved family yet. Invite by Gmail, then approve them after they sign in.')}
     </div>
   `;
 }
@@ -875,8 +875,8 @@ function renderAuthenticatedUserList(view) {
     <div class="business-profile-form">
       <div class="detail-illustration"></div>
       <h2>${view.title}</h2>
-      <p>Pick an approved family member or friend to start chatting.</p>
-      ${renderFriendSearchForm('No approved family yet. Ask them to sign in once, then approve them here.')}
+      <p>Open Friends & Invites to pick approved friends, send Gmail invites, or approve waiting people.</p>
+      <button class="detail-action" type="button" data-jump-section="friends">Open Friends & Invites</button>
     </div>
   `;
 }
@@ -1737,8 +1737,8 @@ function showActionDialog(view) {
         <div class="business-profile-form dialog-form">
           <div class="detail-illustration"></div>
           <h2>${view.title}</h2>
-          <p>Pick a signed-in friend to start chatting.</p>
-          ${renderFriendSearchForm('Ask your friend to sign in once.')}
+          <p>Use Friends & Invites to pick approved friends or send a Gmail invite.</p>
+          <button class="detail-action" type="button" data-jump-section="friends">Open Friends & Invites</button>
         </div>
       </section>
     `;
@@ -1799,6 +1799,15 @@ function showSettingChoiceDialog(choiceView) {
 }
 
 function openAction(actionId) {
+  if (actionId === 'newChat') {
+    activeAction = null;
+    activeSettingsPage = null;
+    mobileConversationOpen = false;
+    state = switchSection(state, 'friends');
+    renderAll();
+    showToast('Friends & Invites opened');
+    return;
+  }
   activeAction = actionId;
   renderAll();
   const view = getActionView(actionId);

@@ -45,10 +45,9 @@ test('app shows a closed-family gate, invite form, and approval controls', () =>
     assert.match(app, /data-family-invite-form/);
     assert.match(app, /data-family-invite-email/);
     assert.match(app, /data-approve-family-user/);
-    assert.match(app, /Only approved family and friends can chat here/);
-    assert.match(app, /Invite Family/);
-    assert.match(app, /Approved family & friends/);
-    assert.match(app, /Invited or waiting for approval/);
+    assert.match(app, /Invite by Gmail/);
+    assert.match(app, /Available users/);
+    assert.match(app, /Pending invites/);
     assert.match(app, /Invite sent to/);
     assert.match(app, /Ask the app owner to approve you/);
   }

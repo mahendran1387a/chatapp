@@ -296,8 +296,8 @@ test('filters chat contacts to authenticated users only', () => {
   const state = createInitialState({ contacts: [manual, authenticated], activeContactId: manual.id });
 
   const updated = reconcileAuthenticatedContacts(state, [
-    { uid: 'uid-me', email: 'me@gmail.com', displayName: 'Me' },
-    { uid: 'uid-friend', email: 'friend@gmail.com', displayName: 'Friend Google' }
+    { uid: 'uid-me', email: 'me@gmail.com', displayName: 'Me', approved: true },
+    { uid: 'uid-friend', email: 'friend@gmail.com', displayName: 'Friend Google', approved: true }
   ], 'uid-me');
 
   assert.deepEqual(updated.contacts.map((contact) => contact.id), ['uid-friend']);
@@ -309,10 +309,10 @@ test('deduplicates authenticated users by Gmail account', () => {
   const state = createInitialState();
 
   const updated = reconcileAuthenticatedContacts(state, [
-    { uid: 'uid-me', email: 'me@gmail.com', displayName: 'Me' },
-    { uid: 'uid-first', email: 'friend@gmail.com', displayName: 'Friend First' },
-    { uid: 'uid-duplicate', email: 'FRIEND@gmail.com', displayName: 'Friend Duplicate' },
-    { uid: 'uid-other', email: 'other@gmail.com', displayName: 'Other Friend' }
+    { uid: 'uid-me', email: 'me@gmail.com', displayName: 'Me', approved: true },
+    { uid: 'uid-first', email: 'friend@gmail.com', displayName: 'Friend First', approved: true },
+    { uid: 'uid-duplicate', email: 'FRIEND@gmail.com', displayName: 'Friend Duplicate', approved: true },
+    { uid: 'uid-other', email: 'other@gmail.com', displayName: 'Other Friend', approved: true }
   ], 'uid-me');
 
   assert.deepEqual(updated.contacts.map((contact) => contact.email), ['friend@gmail.com', 'other@gmail.com']);
@@ -334,8 +334,8 @@ test('updates authenticated contact online status from Google user records', () 
   });
 
   const updated = reconcileAuthenticatedContacts(state, [
-    { uid: 'uid-me', email: 'me@gmail.com', displayName: 'Me', onlineStatus: 'online' },
-    { uid: 'uid-friend', email: 'friend@gmail.com', displayName: 'Friend Google', onlineStatus: 'online' }
+    { uid: 'uid-me', email: 'me@gmail.com', displayName: 'Me', onlineStatus: 'online', approved: true },
+    { uid: 'uid-friend', email: 'friend@gmail.com', displayName: 'Friend Google', onlineStatus: 'online', approved: true }
   ], 'uid-me');
 
   assert.equal(updated.contacts[0].onlineStatus, 'online');
@@ -350,6 +350,7 @@ test('filters signed-in users locally for automatic discovery', async () => {
     { uid: 'uid-aisha', email: 'aisha.friend@gmail.com', displayName: 'Aisha Friend', approved: true },
     { uid: 'uid-rohan', email: 'rohan.home@gmail.com', displayName: 'Rohan Home', approved: true },
     { uid: 'uid-pending', email: 'pending.home@gmail.com', displayName: 'Pending Friend', approved: false },
+    { uid: 'uid-unknown', email: 'unknown.home@gmail.com', displayName: 'Unknown Friend' },
     { uid: 'uid-dupe', email: 'AISHA.friend@gmail.com', displayName: 'Aisha Duplicate', approved: true }
   ];
 
@@ -362,7 +363,7 @@ test('filters signed-in users locally for automatic discovery', async () => {
   assert.deepEqual(byHiddenEmail.map((user) => user.uid), ['uid-rohan']);
 });
 
-test('friends screen shows automatic approved users before invite-by-email', () => {
+test('friends and invites menu owns approved users, pending invites, and invite by Gmail', () => {
   for (const relativePath of [
     '../src/app.js',
     '../android/app/src/main/assets/www/src/app.js'
@@ -372,12 +373,19 @@ test('friends screen shows automatic approved users before invite-by-email', () 
     const formEnd = contents.indexOf('function renderFriendsInvitesPanel');
     const formTemplate = contents.slice(formStart, formEnd);
     const autoListIndex = formTemplate.indexOf('renderFriendSearchRows(autoListMessage)');
+    const pendingIndex = formTemplate.indexOf('renderPendingFamilyRows()');
     const inviteIndex = formTemplate.indexOf('renderInviteFamilyForm()');
 
     assert.ok(autoListIndex !== -1);
+    assert.ok(pendingIndex !== -1);
     assert.ok(inviteIndex !== -1);
+    assert.ok(autoListIndex < pendingIndex);
     assert.ok(autoListIndex < inviteIndex);
+    assert.ok(pendingIndex < inviteIndex);
     assert.match(contents, /Everyone approved appears automatically/);
+    assert.match(contents, /Available users/);
+    assert.match(contents, /Pending invites/);
+    assert.match(contents, /Invite by Gmail/);
     assert.doesNotMatch(contents, /Use Invite Family, then approve them after they sign in/);
   }
 });
@@ -477,14 +485,13 @@ test('new chat flow uses authenticated Google users instead of typed names', () 
     assert.match(contents, /🌙 Away/);
     assert.match(contents, /⚫ Offline/);
     assert.match(contents, /Search friends/);
-    assert.match(contents, /Approved family & friends/);
+    assert.match(contents, /Available users/);
     assert.match(contents, /id="friendSearchForm"/);
     assert.match(contents, /data-friend-search-input/);
-    assert.match(contents, /Only approved family and friends can chat here/);
     assert.match(contents, /Friends & Invites/);
+    assert.match(contents, /state = switchSection\(state, 'friends'\)/);
     assert.doesNotMatch(contents, /id="newChatForm"/);
     assert.match(contents, /function getContactEmail\(contact\)/);
-    assert.match(contents, /if \(activeAction === 'newChat'\) return;/);
     assert.doesNotMatch(contents, /data-friend-search-submit/);
     assert.doesNotMatch(contents, /Find friend by Gmail/);
     assert.doesNotMatch(contents, /Press Search to find or invite this Gmail/);
@@ -503,10 +510,14 @@ test('new chat automatically shows signed-in users and search only filters them'
   ]) {
     const contents = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
     assert.match(contents, /Search friends/);
-    assert.match(contents, /Approved family & friends/);
+    assert.match(contents, /Available users/);
     assert.match(contents, /No approved family yet/);
     assert.match(contents, /filterAuthenticatedUsers/);
     assert.match(contents, /data-friend-search-input/);
+    const newChatDialogStart = contents.lastIndexOf("view.form === 'newChat'");
+    const newChatDialogEnd = contents.indexOf("} else if (view.form === 'createGroup')");
+    const newChatDialog = contents.slice(newChatDialogStart, newChatDialogEnd);
+    assert.doesNotMatch(newChatDialog, /renderFriendSearchForm/);
     assert.doesNotMatch(contents, /subscribeUserByEmail/);
     assert.doesNotMatch(contents, /Find friend by Gmail/);
     assert.doesNotMatch(contents, /Search \/ Invite/);
