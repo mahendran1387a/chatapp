@@ -118,6 +118,8 @@ test('app exposes a real Create Group flow from approved signed-in users', () =>
     assert.match(app, /subscribeUserGroups/);
     assert.match(app, /sendFirebaseGroupMessage/);
     assert.match(app, /subscribeGroupMessages/);
+    assert.match(app, /explainFirebaseError/);
+    assert.match(app, /Firebase rules need publishing/);
     assert.match(app, /activeContact\.groupId/);
   }
 });

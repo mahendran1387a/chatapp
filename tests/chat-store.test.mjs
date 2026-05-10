@@ -456,7 +456,7 @@ test('new chat flow uses authenticated Google users instead of typed names', () 
     assert.match(contents, /🌙 Away/);
     assert.match(contents, /⚫ Offline/);
     assert.match(contents, /Search friends/);
-    assert.match(contents, /Online friends/);
+    assert.match(contents, /Approved family & friends/);
     assert.match(contents, /id="friendSearchForm"/);
     assert.match(contents, /data-friend-search-input/);
     assert.match(contents, /Only approved family and friends can chat here/);
@@ -482,7 +482,7 @@ test('new chat automatically shows signed-in users and search only filters them'
   ]) {
     const contents = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
     assert.match(contents, /Search friends/);
-    assert.match(contents, /Online friends/);
+    assert.match(contents, /Approved family & friends/);
     assert.match(contents, /No approved family yet/);
     assert.match(contents, /filterAuthenticatedUsers/);
     assert.match(contents, /data-friend-search-input/);

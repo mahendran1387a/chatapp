@@ -34,6 +34,7 @@ import {
   startAuthListener,
   subscribeAuthenticatedUsers,
   subscribeCurrentUserProfile,
+  subscribeFamilyInvites,
   subscribeGroupMessages,
   subscribePendingFamilyUsers,
   subscribeConversationMessages,
@@ -218,10 +219,12 @@ let chatsLoading = false;
 let authenticatedUsers = [];
 let firebaseGroups = [];
 let pendingFamilyUsers = [];
+let pendingFamilyInvites = [];
 let currentUserProfile = null;
 let unsubscribeUsers = () => {};
 let unsubscribeCurrentUserProfile = () => {};
 let unsubscribePendingFamilyUsers = () => {};
+let unsubscribeFamilyInvites = () => {};
 let unsubscribeConversation = () => {};
 let unsubscribeGroups = () => {};
 let subscribedConversationContactId = '';
@@ -732,7 +735,7 @@ function renderAuthenticatedUserRows(users, emptyMessage) {
 function renderFriendSearchRows(emptyMessage) {
   const users = getFilteredAuthenticatedUsers();
   const query = friendSearchQuery.trim();
-  const title = query ? 'Search results' : 'Online friends';
+  const title = query ? 'Search results' : 'Approved family & friends';
   const noMatch = query ? 'No friend matched that search.' : emptyMessage;
   return `
     <h3 class="user-list-heading">${title}</h3>
@@ -742,21 +745,32 @@ function renderFriendSearchRows(emptyMessage) {
 
 function renderPendingFamilyRows() {
   if (!isCurrentUserOwner()) return '';
-  const rows = pendingFamilyUsers.length
-    ? pendingFamilyUsers.map((user) => `
+  const pendingUserEmails = new Set(pendingFamilyUsers.map((user) => String(user.email ?? '').trim().toLowerCase()));
+  const inviteRows = pendingFamilyInvites
+    .filter((invite) => !pendingUserEmails.has(String(invite.email ?? '').trim().toLowerCase()))
+    .map((invite) => `
+      <div class="auth-user-row invite-row">
+        ${renderAvatar('✉', '#facc15', 'small', '#503600')}
+        <span>
+          <strong>${escapeHtml(invite.email)}</strong>
+          <small>Invite sent to ${escapeHtml(invite.email)}</small>
+        </span>
+      </div>
+    `);
+  const approvalRows = pendingFamilyUsers.map((user) => `
         <button class="auth-user-row" type="button" data-approve-family-user="${escapeAttribute(user.uid)}">
           ${renderUserPhoto(user, 'small')}
           <span>
             <strong>${escapeHtml(getUserName(user))}</strong>
-            <small>Waiting for approval</small>
+            <small>Tap to approve for family chat</small>
           </span>
         </button>
-      `).join('')
-    : '<p class="empty-copy">No pending family approvals right now.</p>';
+      `);
+  const rows = [...approvalRows, ...inviteRows];
   return `
     <div class="auth-user-list pending-family-list">
-      <h3 class="user-list-heading">Pending Invites</h3>
-      ${rows}
+      <h3 class="user-list-heading">Invited or waiting for approval</h3>
+      ${rows.length ? rows.join('') : '<p class="empty-copy">No invited or waiting people right now.</p>'}
     </div>
   `;
 }
@@ -841,7 +855,7 @@ function renderFriendsInvitesPanel() {
     <div class="friends-invites-shell">
       <div class="invite-friend-intro">
         <h3>Friends & Invites</h3>
-        <p>Signed-in users from your family list appear here automatically after approval.</p>
+        <p>Approved and invited family members appear here automatically after Google sign-in.</p>
       </div>
       ${renderFriendSearchForm('No approved family yet. Use Invite Family, then approve them after they sign in.')}
     </div>
@@ -1239,7 +1253,7 @@ function renderConversation() {
         await sendFirebaseMessage(activeContact.uid, text, currentAuthUser);
       }
     } catch (error) {
-      showToast(error.message);
+      showFirebaseError(error);
       return;
     }
     state = sendMessage(state, text, {
@@ -1405,8 +1419,8 @@ function subscribeActiveConversation() {
       if (!isTextEntryActive()) renderAll();
   };
   unsubscribeConversation = activeContact.groupId
-    ? subscribeGroupMessages(activeContact.groupId, currentAuthUser.uid, applyMessages, (error) => showToast(error.message))
-    : subscribeConversationMessages(currentAuthUser.uid, activeContact.uid, applyMessages, (error) => showToast(error.message));
+    ? subscribeGroupMessages(activeContact.groupId, currentAuthUser.uid, applyMessages, showFirebaseError)
+    : subscribeConversationMessages(currentAuthUser.uid, activeContact.uid, applyMessages, showFirebaseError);
 }
 
 function renderAll() {
@@ -1483,6 +1497,21 @@ function showToast(text) {
   toast.textContent = text;
   document.body.append(toast);
   window.setTimeout(() => toast.remove(), 1800);
+}
+
+function explainFirebaseError(error) {
+  const message = error?.message ?? '';
+  if (error?.code === 'permission-denied' || message.includes('Missing or insufficient permissions')) {
+    return 'Firebase rules need publishing, or this account is not approved yet.';
+  }
+  if (error?.code === 'failed-precondition' || message.toLowerCase().includes('index')) {
+    return 'Firebase needs a small index for this list. Ask a parent to open the Firebase link.';
+  }
+  return message || 'Something went wrong. Please try again.';
+}
+
+function showFirebaseError(error) {
+  showToast(explainFirebaseError(error));
 }
 
 function closeContactMenu() {
@@ -1885,7 +1914,7 @@ document.addEventListener('click', (event) => {
 
   if (event.target.closest('[data-auth-logout]')) {
     updateCurrentPresence('offline');
-    logoutGoogleUser().catch((error) => showToast(error.message));
+    logoutGoogleUser().catch(showFirebaseError);
     return;
   }
 
@@ -1893,7 +1922,7 @@ document.addEventListener('click', (event) => {
   if (approveFamilyButton) {
     approveFamilyMember(approveFamilyButton.dataset.approveFamilyUser, currentAuthUser)
       .then(() => showToast('Family member approved'))
-      .catch((error) => showToast(error.message));
+      .catch(showFirebaseError);
     return;
   }
 
@@ -2148,7 +2177,7 @@ document.addEventListener('submit', (event) => {
         familyInviteForm.reset();
         showToast('Invite saved. Ask them to sign in once.');
       })
-      .catch((error) => showToast(error.message));
+      .catch(showFirebaseError);
     return;
   }
 
@@ -2186,7 +2215,7 @@ document.addEventListener('submit', (event) => {
         renderAll();
         showToast('Group created');
       })
-      .catch((error) => showToast(error.message));
+      .catch(showFirebaseError);
     return;
   }
 
@@ -2315,7 +2344,7 @@ function updateCurrentPresence(onlineStatus) {
   const nextStatus = getPresenceStatusClass(onlineStatus);
   if (currentPresenceStatus === nextStatus) return;
   currentPresenceStatus = nextStatus;
-  setUserOnlineStatus(currentAuthUser, nextStatus).catch((error) => showToast(error.message));
+  setUserOnlineStatus(currentAuthUser, nextStatus).catch(showFirebaseError);
   renderSignedInUser();
 }
 
@@ -2336,7 +2365,7 @@ function startApprovedFamilyLists(user) {
     },
     (error) => {
       chatsLoading = false;
-      showToast(error.message);
+      showFirebaseError(error);
       renderAll();
     }
   );
@@ -2348,7 +2377,7 @@ function startApprovedFamilyLists(user) {
     },
     (error) => {
       chatsLoading = false;
-      showToast(error.message);
+      showFirebaseError(error);
       renderAll();
     }
   );
@@ -2358,7 +2387,14 @@ function startApprovedFamilyLists(user) {
         pendingFamilyUsers = users.filter((item) => item.uid !== user.uid);
         renderAll();
       },
-      (error) => showToast(error.message)
+      showFirebaseError
+    );
+    unsubscribeFamilyInvites = subscribeFamilyInvites(
+      (invites) => {
+        pendingFamilyInvites = invites;
+        renderAll();
+      },
+      showFirebaseError
     );
   }
 }
@@ -2383,6 +2419,7 @@ function startFirebaseAuth() {
       unsubscribeUsers();
       unsubscribeCurrentUserProfile();
       unsubscribePendingFamilyUsers();
+      unsubscribeFamilyInvites();
       unsubscribeConversation();
       unsubscribeGroups();
       familyListsStarted = false;
@@ -2391,6 +2428,7 @@ function startFirebaseAuth() {
         authenticatedUsers = [];
         firebaseGroups = [];
         pendingFamilyUsers = [];
+        pendingFamilyInvites = [];
         currentUserProfile = null;
         friendSearchQuery = '';
         selectedGroupMemberIds = new Set();
@@ -2417,6 +2455,7 @@ function startFirebaseAuth() {
             authenticatedUsers = [];
             firebaseGroups = [];
             pendingFamilyUsers = [];
+            pendingFamilyInvites = [];
             state = reconcileAuthenticatedContacts(state, [], user.uid, []);
             chatsLoading = false;
           }
@@ -2424,7 +2463,7 @@ function startFirebaseAuth() {
         },
         (error) => {
           chatsLoading = false;
-          showToast(error.message);
+          showFirebaseError(error);
           renderAll();
         }
       );

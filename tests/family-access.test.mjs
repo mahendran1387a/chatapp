@@ -16,8 +16,13 @@ test('Firebase identity is narrowed to approved family members only', () => {
   assert.match(auth, /where\('approved', '==', true\)/);
   assert.match(auth, /subscribeCurrentUserProfile/);
   assert.match(auth, /subscribePendingFamilyUsers/);
+  assert.match(auth, /subscribeFamilyInvites/);
   assert.match(auth, /sendFamilyInvite/);
   assert.match(auth, /approveFamilyMember/);
+  assert.match(auth, /inviteRef/);
+  assert.match(auth, /hasInvite/);
+  assert.match(auth, /profile\.approved = true/);
+  assert.match(auth, /profile\.role = 'member'/);
   assert.match(auth, /existingData/);
   assert.match(auth, /!\('approved' in existingData\)/);
   assert.match(auth, /user\.approved !== true/);
@@ -31,6 +36,8 @@ test('app shows a closed-family gate, invite form, and approval controls', () =>
 
     assert.match(app, /currentUserProfile/);
     assert.match(app, /pendingFamilyUsers/);
+    assert.match(app, /pendingFamilyInvites/);
+    assert.match(app, /unsubscribeFamilyInvites = subscribeFamilyInvites/);
     assert.match(app, /function isCurrentUserApproved\(\)/);
     assert.match(app, /function renderFamilyAccessGate\(\)/);
     assert.match(app, /data-family-invite-form/);
@@ -38,6 +45,9 @@ test('app shows a closed-family gate, invite form, and approval controls', () =>
     assert.match(app, /data-approve-family-user/);
     assert.match(app, /Only approved family and friends can chat here/);
     assert.match(app, /Invite Family/);
+    assert.match(app, /Approved family & friends/);
+    assert.match(app, /Invited or waiting for approval/);
+    assert.match(app, /Invite sent to/);
     assert.match(app, /Ask the app owner to approve you/);
   }
 });
@@ -50,6 +60,8 @@ test('Firestore rules enforce closed family access and owner-only invites', () =
   assert.match(rules, /resource\.data\.approved == true/);
   assert.match(rules, /match \/invites\/\{email\}/);
   assert.match(rules, /allow create, update: if ownerEmail\(\)/);
+  assert.match(rules, /hasInvitedEmail\(\)/);
+  assert.match(rules, /validSelfInviteApproval\(uid\)/);
   assert.match(rules, /validSelfPendingMigration\(uid\)/);
   assert.match(rules, /approvedUser\(request\.auth\.uid\)/);
   assert.match(rules, /approvedUid\(data\.participants\[0\]\)/);

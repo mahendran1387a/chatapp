@@ -24,6 +24,11 @@ service cloud.firestore {
       return signedIn() && request.auth.uid == uid && approvedUid(uid);
     }
 
+    function hasInvitedEmail() {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/invites/$(request.auth.token.email));
+    }
+
     function profileKeys() {
       return [
         'uid',
@@ -57,6 +62,7 @@ service cloud.firestore {
         && validProfileBasics(uid)
         && (
           (ownerEmail() && request.resource.data.approved == true && request.resource.data.role == 'owner') ||
+          (!ownerEmail() && hasInvitedEmail() && request.resource.data.approved == true && request.resource.data.role == 'member') ||
           (!ownerEmail() && request.resource.data.approved == false && request.resource.data.role == 'pending')
         );
     }
@@ -74,6 +80,32 @@ service cloud.firestore {
         ])
         && request.resource.data.uid == resource.data.uid
         && request.resource.data.email == resource.data.email
+        && request.resource.data.onlineStatus in ['online', 'away', 'offline']
+        && request.resource.data.isOnline is bool;
+    }
+
+    function validSelfInviteApproval(uid) {
+      return userOwnsProfile(uid)
+        && !ownerEmail()
+        && hasInvitedEmail()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'displayName',
+          'photoURL',
+          'lastLoginAt',
+          'lastSeenAt',
+          'onlineStatus',
+          'isOnline',
+          'updatedAt',
+          'approved',
+          'role',
+          'approvedAt',
+          'approvedBy'
+        ])
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.approved == true
+        && request.resource.data.role == 'member'
+        && request.resource.data.approvedBy is string
         && request.resource.data.onlineStatus in ['online', 'away', 'offline']
         && request.resource.data.isOnline is bool;
     }
@@ -190,7 +222,7 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if ownerEmail() || userOwnsProfile(uid) || resource.data.approved == true;
       allow create: if validSelfProfileCreate(uid) || ownerWriteUserProfile(uid);
-      allow update: if validSelfProfileUpdate(uid) || validSelfPendingMigration(uid) || ownerWriteUserProfile(uid);
+      allow update: if validSelfProfileUpdate(uid) || validSelfInviteApproval(uid) || validSelfPendingMigration(uid) || ownerWriteUserProfile(uid);
       allow delete: if false;
     }
 

@@ -137,10 +137,19 @@ export async function saveUserProfile(user) {
   const firebase = ensureFirebase();
   if (!firebase || !user) return;
   const userRef = doc(firebase.db, 'users', user.uid);
+  const email = normalizeEmail(user.email);
+  const inviteRef = email ? doc(firebase.db, 'invites', email) : null;
   const existing = await getDoc(userRef);
+  const invite = inviteRef ? await getDoc(inviteRef) : null;
   const existingData = existing.exists() ? existing.data() : {};
   const profile = toUserProfile(user);
-  if (!isFamilyOwnerEmail(user.email) && (!existing.exists() || !('approved' in existingData))) {
+  const hasInvite = Boolean(invite?.exists());
+  if (!isFamilyOwnerEmail(user.email) && hasInvite) {
+    profile.approved = true;
+    profile.role = 'member';
+    profile.approvedBy = invite.data()?.invitedBy ?? '';
+    profile.approvedAt = serverTimestamp();
+  } else if (!isFamilyOwnerEmail(user.email) && (!existing.exists() || !('approved' in existingData))) {
     profile.approved = false;
     profile.role = 'pending';
   }
@@ -226,6 +235,26 @@ export function subscribePendingFamilyUsers(onUsers, onError) {
           return firstName.localeCompare(secondName);
         });
       onUsers(users);
+    },
+    (error) => onError?.(error)
+  );
+}
+
+export function subscribeFamilyInvites(onInvites, onError) {
+  const firebase = ensureFirebase();
+  if (!firebase) {
+    onInvites([]);
+    return () => {};
+  }
+
+  return onSnapshot(
+    collection(firebase.db, 'invites'),
+    (snapshot) => {
+      const invites = snapshot.docs
+        .map((item) => ({ id: item.id, ...item.data() }))
+        .filter((invite) => typeof invite.email === 'string' && invite.email.trim())
+        .sort((first, second) => first.email.localeCompare(second.email));
+      onInvites(invites);
     },
     (error) => onError?.(error)
   );
