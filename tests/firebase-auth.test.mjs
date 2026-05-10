@@ -63,6 +63,19 @@ test('Firebase Google auth gates chat access and removes manual new-chat registr
   assert.doesNotMatch(config, /apiKey: 'YOUR_/);
 });
 
+test('logout uses Firebase sign-out instead of fake local session state', () => {
+  const app = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
+  const store = readFileSync(new URL('../src/chat-store.js', import.meta.url), 'utf8');
+
+  assert.match(app, /async function handleGoogleLogout\(\)/);
+  assert.match(app, /await logoutGoogleUser\(\)/);
+  assert.match(app, /if \(finalAction === 'logout'\)[\s\S]*handleGoogleLogout\(\)/);
+  assert.doesNotMatch(app, /let isLoggedOut = false/);
+  assert.doesNotMatch(app, /data-login-again/);
+  assert.doesNotMatch(app, /Logged in again/);
+  assert.doesNotMatch(store, /This is a demo/);
+});
+
 test('Firestore rules require auth uid and sender identity to match request auth', () => {
   const rules = readFileSync(new URL('../firestore.rules', import.meta.url), 'utf8');
 

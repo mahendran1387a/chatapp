@@ -232,7 +232,6 @@ let familyListsStarted = false;
 let settingsSearchQuery = '';
 let friendSearchQuery = '';
 let currentPresenceStatus = '';
-let isLoggedOut = false;
 let mobileConversationOpen = false;
 let restoreSelectedChatOnLoad = Boolean(savedInitialChatState.activeContactId);
 let selectedGroupMemberIds = new Set();
@@ -458,6 +457,20 @@ function renderNoChatSelected() {
   `;
 }
 
+async function handleGoogleLogout() {
+  activeAction = null;
+  activeSettingsPage = null;
+  mobileConversationOpen = false;
+  state = switchSection(state, 'chats');
+  updateCurrentPresence('offline');
+  try {
+    await logoutGoogleUser();
+    showToast('Logged out from this computer');
+  } catch (error) {
+    showFirebaseError(error);
+  }
+}
+
 function renderFamilyAccessGate() {
   if (!currentAuthUser || isCurrentUserApproved()) return false;
   appShell.classList.add('auth-locked');
@@ -532,17 +545,6 @@ function renderDetailView(view, type = 'action') {
       ${view.points.map((point) => `<span>${point}</span>`).join('')}
     </div>
     <button class="detail-action" data-action-toast="${view.title}">${view.primaryAction}</button>
-  `;
-}
-
-function renderLoggedOutState() {
-  emptyState.classList.remove('hidden');
-  conversation.classList.add('hidden');
-  emptyState.innerHTML = `
-    <div class="settings-illustration"></div>
-    <h2>Logged out</h2>
-    <p>You logged out from this computer.</p>
-    <button class="detail-action" data-login-again>Log in again</button>
   `;
 }
 
@@ -1078,17 +1080,6 @@ function renderSettingsScrollableContent() {
   `;
 }
 
-function renderLoggedOutPanel() {
-  return `
-    <div class="settings-logged-out">
-      <div class="settings-illustration"></div>
-      <h1>Logged out</h1>
-      <p>You logged out from this computer.</p>
-      <button class="detail-action" data-login-again>Log in again</button>
-    </div>
-  `;
-}
-
 function renderSettingsHome() {
   return `
     <header class="panel-header">
@@ -1340,11 +1331,6 @@ function renderSection() {
 
   conversation.classList.add('hidden');
 
-  if (isLoggedOut) {
-    renderLoggedOutState();
-    return;
-  }
-
   if (activeAction) {
     renderDetailView(getActionView(activeAction), state.activeSection === 'settings' ? 'settings' : 'action');
     return;
@@ -1378,10 +1364,6 @@ function renderSection() {
 function renderSettingsPanel() {
   const settingsPanel = document.querySelector('[data-panel="settings"]');
   if (!settingsPanel) return;
-  if (isLoggedOut) {
-    settingsPanel.innerHTML = renderLoggedOutPanel();
-    return;
-  }
   settingsPanel.innerHTML = activeSettingsPage ? renderSettingsPage(activeSettingsPage) : renderSettingsHome();
 }
 
@@ -1917,8 +1899,7 @@ document.addEventListener('click', (event) => {
   }
 
   if (event.target.closest('[data-auth-logout]')) {
-    updateCurrentPresence('offline');
-    logoutGoogleUser().catch(showFirebaseError);
+    handleGoogleLogout();
     return;
   }
 
@@ -2031,12 +2012,7 @@ document.addEventListener('click', (event) => {
     const finalAction = finalActionButton.dataset.finalAction;
     finalActionButton.closest('.action-dialog-backdrop')?.remove();
     if (finalAction === 'logout') {
-      isLoggedOut = true;
-      activeAction = null;
-      activeSettingsPage = null;
-      state = switchSection(state, 'settings');
-      renderAll();
-      showToast('Logged out from this computer');
+      handleGoogleLogout();
       return;
     }
     showToast(`${finalActionButton.textContent.trim()} confirmed`);
@@ -2103,14 +2079,6 @@ document.addEventListener('click', (event) => {
     return;
   }
   showSettingChoiceDialog(getSettingOptionView(label));
-});
-
-document.addEventListener('click', (event) => {
-  if (!event.target.closest('[data-login-again]')) return;
-  isLoggedOut = false;
-  state = switchSection(state, 'settings');
-  renderAll();
-  showToast('Logged in again');
 });
 
 document.addEventListener('input', (event) => {

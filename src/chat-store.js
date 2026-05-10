@@ -317,9 +317,9 @@ const actionViews = {
   },
   logout: {
     title: 'Log out',
-    body: 'This is a demo, so logging out only shows this confirmation screen.',
+    body: 'Sign out of your Google account on this browser.',
     primaryAction: 'Log out',
-    points: ['Demo session', 'No account data stored', 'Safe to continue']
+    points: ['Firebase sign-out', 'Refresh stays logged out', 'Sign in again with Google']
   }
 };
 
@@ -500,9 +500,9 @@ const settingOptionViews = {
 const settingDangerViews = {
   'Log out from this computer': {
     title: 'Log out from this computer?',
-    body: 'You will leave this demo session on this browser. You can open the app again anytime.',
+    body: 'You will sign out of Google on this browser. Refresh will not log you back in.',
     primaryAction: 'Log out',
-    points: ['Confirm logout', 'Keep chats in demo', 'Return anytime'],
+    points: ['Confirm logout', 'Google sign-out', 'Return with Google login'],
     finalAction: 'logout'
   },
   'Delete account': {
