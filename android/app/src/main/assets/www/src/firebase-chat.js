@@ -448,19 +448,20 @@ export async function sendFirebaseMessage(contactUid, text, user) {
   if (!cleanText) return null;
 
   const conversationId = getConversationId(user.uid, contactUid);
+  const participants = [user.uid, contactUid].sort();
   const payload = {
     text: cleanText,
     senderUid: user.uid,
     senderEmail: user.email ?? '',
     senderDisplayName: user.displayName ?? user.email ?? 'Google user',
     senderPhotoURL: user.photoURL ?? '',
-    participants: [user.uid, contactUid],
+    participants,
     readBy: [user.uid],
     timestamp: serverTimestamp()
   };
 
   await setDoc(doc(firebase.db, 'conversations', conversationId), {
-    participants: [user.uid, contactUid],
+    participants,
     updatedAt: serverTimestamp()
   }, { merge: true });
   await addDoc(collection(firebase.db, 'conversations', conversationId, 'messages'), payload);

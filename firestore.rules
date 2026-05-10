@@ -191,6 +191,12 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants == request.resource.data.participants;
     }
 
+    function validConversationReadReceiptUpdate(conversationId) {
+      return validReadReceiptUpdate()
+        && exists(/databases/$(database)/documents/conversations/$(conversationId))
+        && get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants.hasAny([request.auth.uid]);
+    }
+
     function groupHasSignedInUser(data) {
       return (data.members is list && data.members.hasAny([request.auth.uid])) ||
         (data.participants is list && data.participants.hasAny([request.auth.uid]));
@@ -256,7 +262,7 @@ service cloud.firestore {
         allow create: if validSenderIdentity()
           && validMessageConversation(conversationId)
           && request.resource.data.participants.hasAny([request.auth.uid]);
-        allow update: if validReadReceiptUpdate();
+        allow update: if validConversationReadReceiptUpdate(conversationId);
         allow delete: if false;
       }
     }

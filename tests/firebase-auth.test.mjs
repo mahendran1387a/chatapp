@@ -42,6 +42,9 @@ test('Firebase Google auth gates chat access and removes manual new-chat registr
   assert.match(auth, /senderUid: user\.uid/);
   assert.match(auth, /senderEmail: user\.email/);
   assert.match(auth, /senderDisplayName:/);
+  assert.match(auth, /const participants = \[user\.uid, contactUid\]\.sort\(\)/);
+  assert.match(auth, /participants,/);
+  assert.doesNotMatch(auth, /participants: \[user\.uid, contactUid\]/);
   assert.match(app, /data-auth-sign-in/);
   assert.match(app, /document\.querySelector\('\.signed-in-user'\)/);
   assert.match(app, /currentAuthUser\.email/);
@@ -92,4 +95,6 @@ test('Firestore rules require auth uid and sender identity to match request auth
   assert.match(rules, /request\.resource\.data\.participants == resource\.data\.participants/);
   assert.match(rules, /affectedKeys\(\)\.hasOnly\(\['updatedAt'\]\)/);
   assert.match(rules, /allow update: if validConversationUpdate\(\)/);
+  assert.match(rules, /function validConversationReadReceiptUpdate\(conversationId\)/);
+  assert.match(rules, /allow update: if validConversationReadReceiptUpdate\(conversationId\)/);
 });
