@@ -132,6 +132,9 @@ test('Firebase group helpers and rules protect group membership and sender ident
   assert.match(firebase, /collection\(firebase\.db, 'groups'\)/);
   assert.match(firebase, /type: 'group'/);
   assert.match(firebase, /participants: members/);
+  assert.match(firebase, /loadApprovedGroupMembers/);
+  assert.match(firebase, /Choose only approved friends for a group/);
+  assert.match(firebase, /doc\(firebase\.db, 'users', uid\)/);
   assert.match(firebase, /console\.info\('\[Kids WhatsApp\] Creating group'/);
   assert.match(firebase, /console\.info\('\[Kids WhatsApp\] Created group'/);
   assert.match(firebase, /console\.error\('\[Kids WhatsApp\] Group create failed'/);

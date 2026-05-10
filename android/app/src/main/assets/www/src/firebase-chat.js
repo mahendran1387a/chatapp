@@ -296,6 +296,22 @@ function normalizeGroupMembers(memberUids = [], currentUid = '') {
   return [...new Set([currentUid, ...memberUids].filter((uid) => typeof uid === 'string' && uid.trim()))];
 }
 
+async function loadApprovedGroupMembers(firebase, memberUids) {
+  const snapshots = await Promise.all(
+    memberUids.map((uid) => getDoc(doc(firebase.db, 'users', uid)))
+  );
+  const approvedUids = snapshots
+    .map((snapshot, index) => {
+      const data = snapshot.exists() ? snapshot.data() : null;
+      return data?.approved === true && data.uid === memberUids[index] ? memberUids[index] : '';
+    })
+    .filter(Boolean);
+  if (approvedUids.length !== memberUids.length) {
+    throw new Error('Choose only approved friends for a group.');
+  }
+  return approvedUids;
+}
+
 function isUserInGroup(group, uid) {
   const members = Array.isArray(group?.members) ? group.members : [];
   const participants = Array.isArray(group?.participants) ? group.participants : [];
@@ -349,6 +365,7 @@ export async function createFirebaseGroup({ groupName, memberUids = [] }, user) 
 
   const members = normalizeGroupMembers(memberUids, user.uid);
   if (members.length < 2) throw new Error('Choose at least 1 friend for a group.');
+  await loadApprovedGroupMembers(firebase, members);
 
   const group = {
     groupName: cleanName,
