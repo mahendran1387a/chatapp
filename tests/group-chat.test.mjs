@@ -50,8 +50,7 @@ test('group chats can be selected and accept outgoing text messages', () => {
     createInitialState(),
     [
       { uid: 'uid-me', email: 'me@gmail.com', displayName: 'Me' },
-      { uid: 'uid-aisha', email: 'aisha@gmail.com', displayName: 'Aisha' },
-      { uid: 'uid-rohan', email: 'rohan@gmail.com', displayName: 'Rohan' }
+      { uid: 'uid-aisha', email: 'aisha@gmail.com', displayName: 'Aisha' }
     ],
     'uid-me',
     [
@@ -59,8 +58,8 @@ test('group chats can be selected and accept outgoing text messages', () => {
         id: 'group-family',
         groupName: 'Family Crew',
         type: 'group',
-        members: ['uid-me', 'uid-aisha', 'uid-rohan'],
-        participants: ['uid-me', 'uid-aisha', 'uid-rohan'],
+        members: ['uid-me', 'uid-aisha'],
+        participants: ['uid-me', 'uid-aisha'],
         createdBy: 'uid-me'
       }
     ]
@@ -87,7 +86,8 @@ test('app exposes a real Create Group flow from approved signed-in users', () =>
     assert.match(app, /id="createGroupForm"/);
     assert.match(app, /data-group-member/);
     assert.match(app, /Create Group/);
-    assert.match(app, /selectedGroupMemberIds\.size < 2/);
+    assert.match(app, /selectedGroupMemberIds\.size < 1/);
+    assert.match(app, /allowedMemberIds/);
     assert.match(app, /createFirebaseGroup/);
     assert.match(app, /subscribeUserGroups/);
     assert.match(app, /sendFirebaseGroupMessage/);
@@ -104,6 +104,10 @@ test('Firebase group helpers and rules protect group membership and sender ident
   assert.match(firebase, /collection\(firebase\.db, 'groups'\)/);
   assert.match(firebase, /type: 'group'/);
   assert.match(firebase, /participants: members/);
+  assert.match(firebase, /console\.info\('\[Kids WhatsApp\] Creating group'/);
+  assert.match(firebase, /console\.info\('\[Kids WhatsApp\] Created group'/);
+  assert.match(firebase, /console\.error\('\[Kids WhatsApp\] Group create failed'/);
+  assert.match(firebase, /groupRef\.path/);
   assert.doesNotMatch(firebase, /updateDoc\(groupRef,\s*\{\s*updatedAt/s);
   assert.match(firebase, /where\('type', '==', 'group'\)/);
   assert.match(firebase, /where\('members', 'array-contains', currentUid\)/);
@@ -115,7 +119,7 @@ test('Firebase group helpers and rules protect group membership and sender ident
   assert.match(rules, /type == 'group'/);
   assert.match(rules, /participants/);
   assert.match(rules, /members == request\.resource\.data\.participants/);
-  assert.match(rules, /members\.size\(\) >= 3/);
+  assert.match(rules, /members\.size\(\) >= 2/);
   assert.match(rules, /createdBy == request\.auth\.uid/);
   assert.match(rules, /validGroupMessage\(groupId\)/);
 });

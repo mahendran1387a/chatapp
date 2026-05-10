@@ -794,12 +794,12 @@ function renderGroupMemberChoice(user) {
 
 function renderCreateGroupForm() {
   const users = getGroupCandidateUsers();
-  const canCreate = users.length >= 2;
+  const canCreate = users.length >= 1;
   return `
     <form class="business-profile-form create-group-form" id="createGroupForm">
       <div class="detail-illustration"></div>
       <h2>Create Group</h2>
-      <p>Choose at least 2 friends, then start a safe group chat.</p>
+      <p>Choose at least 1 friend, then start a safe group chat.</p>
       <label class="profile-field">
         <span>Group name</span>
         <input name="groupName" type="text" autocomplete="off" maxlength="40" placeholder="Family Team" required />
@@ -807,7 +807,7 @@ function renderCreateGroupForm() {
       <div class="group-member-list" aria-label="Choose group friends">
         ${canCreate
           ? users.map(renderGroupMemberChoice).join('')
-          : '<p class="empty-copy">Ask at least 2 approved friends to sign in first.</p>'}
+          : '<p class="empty-copy">Ask at least 1 approved friend to sign in first.</p>'}
       </div>
       <button class="detail-action" type="submit" ${canCreate ? '' : 'disabled'}>Create Group</button>
     </form>
@@ -2158,11 +2158,17 @@ document.addEventListener('submit', (event) => {
     if (!requireAuth()) return;
     const formData = new FormData(createGroupForm);
     const groupName = String(formData.get('groupName') ?? '');
-    const memberUids = [...createGroupForm.querySelectorAll('[data-group-member]:checked')]
+    const allowedMemberIds = new Set(getGroupCandidateUsers().map((user) => user.uid));
+    const requestedMemberUids = [...createGroupForm.querySelectorAll('[data-group-member]:checked')]
       .map((item) => item.value);
+    const memberUids = requestedMemberUids.filter((uid) => allowedMemberIds.has(uid));
     selectedGroupMemberIds = new Set(memberUids);
-    if (selectedGroupMemberIds.size < 2) {
-      showToast('Choose at least 2 friends.');
+    if (memberUids.length !== requestedMemberUids.length) {
+      showToast('Choose friends from the signed-in list.');
+      return;
+    }
+    if (selectedGroupMemberIds.size < 1) {
+      showToast('Choose at least 1 friend.');
       return;
     }
     createFirebaseGroup({ groupName, memberUids }, currentAuthUser)

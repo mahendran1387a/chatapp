@@ -170,7 +170,7 @@ service cloud.firestore {
         && request.resource.data.type == 'group'
         && request.resource.data.members is list
         && request.resource.data.participants is list
-        && request.resource.data.members.size() >= 3
+        && request.resource.data.members.size() >= 2
         && request.resource.data.participants.size() == request.resource.data.members.size()
         && request.resource.data.members == request.resource.data.participants
         && request.resource.data.members.hasAny([request.auth.uid])

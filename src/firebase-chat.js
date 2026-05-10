@@ -292,10 +292,10 @@ export async function createFirebaseGroup({ groupName, memberUids = [] }, user) 
   if (!firebase) throw new Error('Firebase is not ready yet.');
   if (!user?.uid) throw new Error('Please sign in again before creating a group.');
   if (!cleanName) throw new Error('Give your group a name.');
-  if (memberUids.length < 2) throw new Error('Choose at least 2 friends for a group.');
+  if (memberUids.length < 1) throw new Error('Choose at least 1 friend for a group.');
 
   const members = normalizeGroupMembers(memberUids, user.uid);
-  if (members.length < 3) throw new Error('Choose at least 2 friends for a group.');
+  if (members.length < 2) throw new Error('Choose at least 1 friend for a group.');
 
   const group = {
     groupName: cleanName,
@@ -305,8 +305,21 @@ export async function createFirebaseGroup({ groupName, memberUids = [] }, user) 
     createdBy: user.uid,
     createdAt: serverTimestamp()
   };
-  const groupRef = await addDoc(collection(firebase.db, 'groups'), group);
-  return { id: groupRef.id, ...group, createdAt: Date.now() };
+  const createPath = 'groups/(auto-id)';
+  console.info('[Kids WhatsApp] Creating group', { path: createPath, data: group });
+  try {
+    const groupRef = await addDoc(collection(firebase.db, 'groups'), group);
+    console.info('[Kids WhatsApp] Created group', { path: groupRef.path, id: groupRef.id });
+    return { id: groupRef.id, ...group, createdAt: Date.now() };
+  } catch (error) {
+    console.error('[Kids WhatsApp] Group create failed', {
+      path: createPath,
+      data: group,
+      code: error.code,
+      message: error.message
+    });
+    throw error;
+  }
 }
 
 export function subscribeUserGroups(currentUid, onGroups, onError) {
