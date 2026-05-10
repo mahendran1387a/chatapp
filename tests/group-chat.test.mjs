@@ -30,7 +30,9 @@ test('reconciles Firestore groups into the chat list and Groups filter', () => {
       {
         id: 'group-family',
         groupName: 'Family Crew',
+        type: 'group',
         members: ['uid-me', 'uid-aisha', 'uid-rohan'],
+        participants: ['uid-me', 'uid-aisha', 'uid-rohan'],
         createdBy: 'uid-me'
       }
     ]
@@ -56,7 +58,9 @@ test('group chats can be selected and accept outgoing text messages', () => {
       {
         id: 'group-family',
         groupName: 'Family Crew',
+        type: 'group',
         members: ['uid-me', 'uid-aisha', 'uid-rohan'],
+        participants: ['uid-me', 'uid-aisha', 'uid-rohan'],
         createdBy: 'uid-me'
       }
     ]
@@ -98,11 +102,19 @@ test('Firebase group helpers and rules protect group membership and sender ident
 
   assert.match(firebase, /createFirebaseGroup/);
   assert.match(firebase, /collection\(firebase\.db, 'groups'\)/);
+  assert.match(firebase, /type: 'group'/);
+  assert.match(firebase, /participants: members/);
+  assert.doesNotMatch(firebase, /updateDoc\(groupRef,\s*\{\s*updatedAt/s);
+  assert.match(firebase, /where\('type', '==', 'group'\)/);
   assert.match(firebase, /where\('members', 'array-contains', currentUid\)/);
   assert.match(firebase, /sendFirebaseGroupMessage/);
   assert.match(firebase, /subscribeGroupMessages/);
   assert.match(rules, /match \/groups\/\{groupId\}/);
   assert.match(rules, /validGroupCreate\(\)/);
+  assert.match(rules, /'type'/);
+  assert.match(rules, /type == 'group'/);
+  assert.match(rules, /participants/);
+  assert.match(rules, /members == request\.resource\.data\.participants/);
   assert.match(rules, /members\.size\(\) >= 3/);
   assert.match(rules, /createdBy == request\.auth\.uid/);
   assert.match(rules, /validGroupMessage\(groupId\)/);

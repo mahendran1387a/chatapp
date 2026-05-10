@@ -622,9 +622,12 @@ function getGroupAvatar(group) {
 }
 
 function normalizeGroupMembers(group) {
-  return Array.isArray(group.members)
-    ? [...new Set(group.members.filter((uid) => typeof uid === 'string' && uid.trim()).map((uid) => uid.trim()))]
-    : [];
+  const members = Array.isArray(group.members)
+    ? group.members
+    : Array.isArray(group.participants)
+      ? group.participants
+      : [];
+  return [...new Set(members.filter((uid) => typeof uid === 'string' && uid.trim()).map((uid) => uid.trim()))];
 }
 
 function buildGroupContact(group, existingContact = {}) {
@@ -647,7 +650,9 @@ function buildGroupContact(group, existingContact = {}) {
     unread: existingContact.unread ?? 0,
     favorite: existingContact.favorite ?? false,
     group: true,
+    type: group.type ?? 'group',
     memberUids,
+    participants: Array.isArray(group.participants) ? group.participants : memberUids,
     createdBy: group.createdBy ?? existingContact.createdBy ?? '',
     messages: existingContact.messages ?? []
   };

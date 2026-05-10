@@ -150,6 +150,7 @@ service cloud.firestore {
 
     function userIsGroupParticipant() {
       return approvedUser(request.auth.uid)
+        && resource.data.type == 'group'
         && resource.data.members is list
         && resource.data.members.hasAny([request.auth.uid]);
     }
@@ -157,26 +158,28 @@ service cloud.firestore {
     function groupParticipant(groupId) {
       return approvedUser(request.auth.uid)
         && exists(/databases/$(database)/documents/groups/$(groupId))
+        && get(/databases/$(database)/documents/groups/$(groupId)).data.type == 'group'
         && get(/databases/$(database)/documents/groups/$(groupId)).data.members is list
         && get(/databases/$(database)/documents/groups/$(groupId)).data.members.hasAny([request.auth.uid]);
     }
 
     function validGroupCreate() {
       return approvedUser(request.auth.uid)
-        && request.resource.data.keys().hasOnly(['groupName', 'members', 'createdBy', 'createdAt', 'updatedAt'])
+        && request.resource.data.keys().hasOnly(['groupName', 'type', 'members', 'participants', 'createdBy', 'createdAt'])
         && request.resource.data.groupName is string
+        && request.resource.data.type == 'group'
         && request.resource.data.members is list
+        && request.resource.data.participants is list
         && request.resource.data.members.size() >= 3
+        && request.resource.data.participants.size() == request.resource.data.members.size()
+        && request.resource.data.members == request.resource.data.participants
         && request.resource.data.members.hasAny([request.auth.uid])
+        && request.resource.data.participants.hasAny([request.auth.uid])
         && request.resource.data.createdBy == request.auth.uid;
     }
 
     function validGroupUpdate() {
-      return userIsGroupParticipant()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['updatedAt'])
-        && request.resource.data.groupName == resource.data.groupName
-        && request.resource.data.members == resource.data.members
-        && request.resource.data.createdBy == resource.data.createdBy;
+      return false;
     }
 
     function validGroupMessage(groupId) {

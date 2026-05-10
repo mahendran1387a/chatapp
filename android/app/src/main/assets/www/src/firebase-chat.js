@@ -299,13 +299,14 @@ export async function createFirebaseGroup({ groupName, memberUids = [] }, user) 
 
   const group = {
     groupName: cleanName,
+    type: 'group',
     members,
+    participants: members,
     createdBy: user.uid,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp()
+    createdAt: serverTimestamp()
   };
   const groupRef = await addDoc(collection(firebase.db, 'groups'), group);
-  return { id: groupRef.id, ...group, createdAt: Date.now(), updatedAt: Date.now() };
+  return { id: groupRef.id, ...group, createdAt: Date.now() };
 }
 
 export function subscribeUserGroups(currentUid, onGroups, onError) {
@@ -316,14 +317,18 @@ export function subscribeUserGroups(currentUid, onGroups, onError) {
   }
 
   return onSnapshot(
-    query(collection(firebase.db, 'groups'), where('members', 'array-contains', currentUid)),
+    query(
+      collection(firebase.db, 'groups'),
+      where('type', '==', 'group'),
+      where('members', 'array-contains', currentUid)
+    ),
     (snapshot) => {
       const groups = snapshot.docs
         .map((item) => ({ id: item.id, ...item.data() }))
         .sort((first, second) => {
-          const firstUpdated = first.updatedAt?.toMillis?.() ?? 0;
-          const secondUpdated = second.updatedAt?.toMillis?.() ?? 0;
-          return secondUpdated - firstUpdated;
+          const firstCreated = first.createdAt?.toMillis?.() ?? 0;
+          const secondCreated = second.createdAt?.toMillis?.() ?? 0;
+          return secondCreated - firstCreated;
         });
       onGroups(groups);
     },
@@ -413,7 +418,6 @@ export async function sendFirebaseGroupMessage(groupId, text, user) {
     timestamp: serverTimestamp()
   };
 
-  await updateDoc(groupRef, { updatedAt: serverTimestamp() });
   await addDoc(collection(firebase.db, 'groups', groupId, 'messages'), payload);
   return payload;
 }
