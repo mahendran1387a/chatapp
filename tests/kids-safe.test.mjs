@@ -70,6 +70,21 @@ test('chat view keeps the composer available after auth refresh when a chat is s
   }
 });
 
+test('chat refresh waits for Firestore users and groups before leaving loading state', () => {
+  for (const relativePath of appFiles) {
+    const contents = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
+
+    assert.match(contents, /let approvedUsersLoaded = false/);
+    assert.match(contents, /let userGroupsLoaded = false/);
+    assert.match(contents, /function areApprovedChatListsReady\(\)/);
+    assert.match(contents, /function resetApprovedChatLoadingState\(\)/);
+    assert.match(contents, /approvedUsersLoaded = true/);
+    assert.match(contents, /userGroupsLoaded = true/);
+    assert.match(contents, /chatsLoading = !areApprovedChatListsReady\(\)/);
+    assert.doesNotMatch(contents, /refresh again/i);
+  }
+});
+
 test('chat layout keeps the message bar inside the visible screen on desktop and mobile', () => {
   for (const relativePath of styleFiles) {
     const contents = readFileSync(new URL(relativePath, import.meta.url), 'utf8');

@@ -228,6 +228,8 @@ let currentAuthUser = null;
 let authReady = false;
 let authError = '';
 let chatsLoading = false;
+let approvedUsersLoaded = false;
+let userGroupsLoaded = false;
 let authenticatedUsers = [];
 let firebaseGroups = [];
 let pendingFamilyUsers = [];
@@ -2341,9 +2343,26 @@ function updateCurrentPresence(onlineStatus) {
   renderSignedInUser();
 }
 
+function areApprovedChatListsReady() {
+  return approvedUsersLoaded && userGroupsLoaded;
+}
+
+function resetApprovedChatLoadingState() {
+  approvedUsersLoaded = false;
+  userGroupsLoaded = false;
+}
+
 function syncApprovedFamilyContacts(user) {
+  const activeContactIdBeforeSync = state.activeContactId;
   state = reconcileAuthenticatedContacts(state, authenticatedUsers, user.uid, firebaseGroups);
-  chatsLoading = false;
+  if (
+    !areApprovedChatListsReady() &&
+    activeContactIdBeforeSync &&
+    !state.contacts.some((contact) => contact.id === activeContactIdBeforeSync)
+  ) {
+    state = { ...state, activeContactId: activeContactIdBeforeSync };
+  }
+  chatsLoading = !areApprovedChatListsReady();
   saveChatState();
   renderAll();
 }
@@ -2351,8 +2370,11 @@ function syncApprovedFamilyContacts(user) {
 function startApprovedFamilyLists(user) {
   if (familyListsStarted) return;
   familyListsStarted = true;
+  resetApprovedChatLoadingState();
+  chatsLoading = true;
   unsubscribeUsers = subscribeAuthenticatedUsers(
     (users) => {
+      approvedUsersLoaded = true;
       authenticatedUsers = users;
       syncApprovedFamilyContacts(user);
     },
@@ -2365,6 +2387,7 @@ function startApprovedFamilyLists(user) {
   unsubscribeGroups = subscribeUserGroups(
     user.uid,
     (groups) => {
+      userGroupsLoaded = true;
       firebaseGroups = groups;
       syncApprovedFamilyContacts(user);
     },
@@ -2416,6 +2439,7 @@ function startFirebaseAuth() {
       unsubscribeConversation();
       unsubscribeGroups();
       familyListsStarted = false;
+      resetApprovedChatLoadingState();
       subscribedConversationContactId = '';
       if (!user) {
         authenticatedUsers = [];
@@ -2450,11 +2474,13 @@ function startFirebaseAuth() {
             pendingFamilyUsers = [];
             pendingFamilyInvites = [];
             state = reconcileAuthenticatedContacts(state, [], user.uid, []);
+            resetApprovedChatLoadingState();
             chatsLoading = false;
           }
           renderAll();
         },
         (error) => {
+          resetApprovedChatLoadingState();
           chatsLoading = false;
           showFirebaseError(error);
           renderAll();
@@ -2466,6 +2492,7 @@ function startFirebaseAuth() {
       authReady = true;
       authError = error.message;
       currentAuthUser = null;
+      resetApprovedChatLoadingState();
       chatsLoading = false;
       renderAll();
     }
