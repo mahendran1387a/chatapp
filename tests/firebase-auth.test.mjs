@@ -75,4 +75,8 @@ test('Firestore rules require auth uid and sender identity to match request auth
   assert.match(rules, /senderUid == request\.auth\.uid/);
   assert.match(rules, /senderEmail == request\.auth\.token\.email/);
   assert.match(rules, /participants\.hasAny\(\[request\.auth\.uid\]\)/);
+  assert.match(rules, /function validConversationUpdate\(\)/);
+  assert.match(rules, /request\.resource\.data\.participants == resource\.data\.participants/);
+  assert.match(rules, /affectedKeys\(\)\.hasOnly\(\['updatedAt'\]\)/);
+  assert.match(rules, /allow update: if validConversationUpdate\(\)/);
 });

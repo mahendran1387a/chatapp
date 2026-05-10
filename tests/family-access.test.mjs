@@ -37,6 +37,8 @@ test('app shows a closed-family gate, invite form, and approval controls', () =>
     assert.match(app, /currentUserProfile/);
     assert.match(app, /pendingFamilyUsers/);
     assert.match(app, /pendingFamilyInvites/);
+    assert.match(app, /approvedUserEmails/);
+    assert.match(app, /!approvedUserEmails\.has/);
     assert.match(app, /unsubscribeFamilyInvites = subscribeFamilyInvites/);
     assert.match(app, /function isCurrentUserApproved\(\)/);
     assert.match(app, /function renderFamilyAccessGate\(\)/);

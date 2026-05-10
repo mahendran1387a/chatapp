@@ -746,8 +746,12 @@ function renderFriendSearchRows(emptyMessage) {
 function renderPendingFamilyRows() {
   if (!isCurrentUserOwner()) return '';
   const pendingUserEmails = new Set(pendingFamilyUsers.map((user) => String(user.email ?? '').trim().toLowerCase()));
+  const approvedUserEmails = new Set(authenticatedUsers.map((user) => String(user.email ?? '').trim().toLowerCase()));
   const inviteRows = pendingFamilyInvites
-    .filter((invite) => !pendingUserEmails.has(String(invite.email ?? '').trim().toLowerCase()))
+    .filter((invite) => {
+      const email = String(invite.email ?? '').trim().toLowerCase();
+      return email && !pendingUserEmails.has(email) && !approvedUserEmails.has(email);
+    })
     .map((invite) => `
       <div class="auth-user-row invite-row">
         ${renderAvatar('✉', '#facc15', 'small', '#503600')}

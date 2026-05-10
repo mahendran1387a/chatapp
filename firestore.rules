@@ -150,6 +150,17 @@ service cloud.firestore {
         && approvedUid(data.participants[1]);
     }
 
+    function validConversationCreate(data) {
+      return data.keys().hasOnly(['participants', 'updatedAt'])
+        && validConversationParticipants(data);
+    }
+
+    function validConversationUpdate() {
+      return userIsParticipant()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['updatedAt'])
+        && request.resource.data.participants == resource.data.participants;
+    }
+
     function userIsParticipant() {
       return approvedUser(request.auth.uid)
         && resource.data.participants is list
@@ -234,8 +245,8 @@ service cloud.firestore {
 
     match /conversations/{conversationId} {
       allow read: if userIsParticipant();
-      allow create: if validConversationParticipants(request.resource.data);
-      allow update: if userIsParticipant() && validConversationParticipants(request.resource.data);
+      allow create: if validConversationCreate(request.resource.data);
+      allow update: if validConversationUpdate();
       allow delete: if false;
 
       match /messages/{messageId} {
