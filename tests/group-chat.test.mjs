@@ -121,6 +121,8 @@ test('app exposes a real Create Group flow from approved signed-in users', () =>
     assert.match(app, /explainFirebaseError/);
     assert.match(app, /Firebase rules need publishing/);
     assert.match(app, /activeContact\.groupId/);
+    assert.match(app, /function isFirestoreGroupContact\(contact\)/);
+    assert.match(app, /function getPersistableContacts\(\)/);
   }
 });
 

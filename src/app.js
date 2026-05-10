@@ -66,11 +66,23 @@ function getClientId() {
   }
 }
 
+function isFirestoreGroupContact(contact) {
+  return Boolean(contact?.group === true || contact?.groupId);
+}
+
+function getPersistableContacts() {
+  return state.contacts.filter((contact) => !isFirestoreGroupContact(contact));
+}
+
 function getPersistedChatPayload() {
+  const contacts = getPersistableContacts();
+  const activeContactId = contacts.some((contact) => contact.id === state.activeContactId)
+    ? state.activeContactId
+    : undefined;
   return {
-    activeContactId: state.activeContactId,
+    activeContactId,
     deletedContactIds: state.deletedContactIds ?? [],
-    contacts: state.contacts
+    contacts
   };
 }
 

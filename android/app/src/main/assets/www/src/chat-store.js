@@ -534,6 +534,14 @@ function isValidContact(contact) {
   );
 }
 
+function isFirestoreGroupContact(contact) {
+  return Boolean(contact?.group === true || contact?.groupId);
+}
+
+function isRestorableSavedContact(contact) {
+  return isValidContact(contact) && !isReferenceContact(contact) && !isFirestoreGroupContact(contact);
+}
+
 function isReferenceContact(contact) {
   return referenceContactIds.has(contact.id) || referenceContactNames.has(contact.name);
 }
@@ -710,7 +718,7 @@ export function reconcileAuthenticatedContacts(state, users = [], currentUid = '
 
 export function createInitialState(savedState = {}) {
   const savedContacts = Array.isArray(savedState.contacts)
-    ? savedState.contacts.filter((contact) => isValidContact(contact) && !isReferenceContact(contact))
+    ? savedState.contacts.filter(isRestorableSavedContact)
     : [];
   const deletedContactIds = Array.isArray(savedState.deletedContactIds)
     ? [...new Set(savedState.deletedContactIds.filter((id) => typeof id === 'string'))]
