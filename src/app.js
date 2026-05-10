@@ -294,6 +294,10 @@ function getUserName(user) {
   return user?.displayName || user?.email?.split('@')[0] || 'Signed-in friend';
 }
 
+function getUserEmail(user) {
+  return user?.email || 'Google account';
+}
+
 function getUserAvatar(user) {
   return initials(getUserName(user)) || 'GU';
 }
@@ -311,6 +315,18 @@ function getPresenceStatusClass(onlineStatus) {
 function renderPresenceStatus(onlineStatus, extraClass = '') {
   const statusClass = getPresenceStatusClass(onlineStatus);
   return `<span class="presence-status ${statusClass} ${extraClass}">${getPresenceStatusLabel(statusClass)}</span>`;
+}
+
+function renderUserEmailLine(user, extraClass = 'user-card-email') {
+  return `<small class="${extraClass}">${escapeHtml(getUserEmail(user))}</small>`;
+}
+
+function renderUserCardMeta(user) {
+  return `
+    <small class="user-card-label">Google friend</small>
+    ${renderUserEmailLine(user)}
+    ${renderPresenceStatus(user?.onlineStatus, 'mini')}
+  `;
 }
 
 function getGroupMemberLabel(contact) {
@@ -359,7 +375,7 @@ function renderAuthGate() {
       <div class="auth-card">
         <img src="app-icon.svg" alt="" />
         <h1>Loading chats...</h1>
-        <p>Checking your safe sign-in and loading messages.</p>
+        <p>Getting your colorful chat room ready.</p>
       </div>
     `;
     return;
@@ -377,7 +393,7 @@ function renderAuthGate() {
     <div class="auth-card">
       <img src="app-icon.svg" alt="" />
       <h1>Kids WhatsApp</h1>
-      <p>A bright, safe place to chat with friends after safe sign-in.</p>
+      <p>A colorful, private place for family and friends after Google sign-in.</p>
       ${authError ? `<small class="auth-error">${authError}</small>` : ''}
       ${configured
         ? '<button class="google-sign-in" type="button" data-auth-sign-in>Sign in with Google</button>'
@@ -398,8 +414,8 @@ function renderLoadingChats() {
   emptyState.innerHTML = `
     <div class="empty-illustration">KW</div>
     <h2>Loading chats...</h2>
-    <p>Getting your friends and messages from Firebase.</p>
-    <small>This happens automatically after sign-in.</small>
+    <p>Getting your colorful chat room ready.</p>
+    <small>Friends, groups, and messages load automatically.</small>
   `;
 }
 
@@ -415,8 +431,8 @@ function renderNoChatSelected() {
   emptyState.innerHTML = `
     <div class="empty-illustration">WA</div>
     <h2>Choose a friend to start chatting.</h2>
-    <p>Open Friends & Invites and pick an approved friend.</p>
-    <small>The message bar appears after a chat is selected.</small>
+    <p>Open Friends & Invites and pick a trusted Google friend.</p>
+    <small>Text chat and voice calls only.</small>
   `;
 }
 
@@ -467,9 +483,9 @@ function renderSignedInUser() {
   signedInUser.setAttribute('aria-label', 'Open profile page');
   signedInUser.innerHTML = `
     ${renderUserPhoto(currentAuthUser, 'signed-in-avatar')}
-    <span>
+    <span class="signed-in-copy">
       <strong>${escapeHtml(getUserName(currentAuthUser))}</strong>
-      <small>Your profile</small>
+      ${renderUserEmailLine(currentAuthUser, 'signed-in-email')}
       ${renderPresenceStatus(currentPresenceStatus || 'online', 'mini')}
     </span>
   `;
@@ -674,10 +690,9 @@ function renderAuthenticatedUserRow(user) {
   return `
     <button class="auth-user-row" type="button" data-auth-user-id="${escapeAttribute(user.uid)}">
       ${renderUserPhoto(user, 'small')}
-      <span>
+      <span class="user-card-copy">
         <strong>${escapeHtml(getUserName(user))}</strong>
-        <small>Signed-in friend</small>
-        ${renderPresenceStatus(user.onlineStatus)}
+        ${renderUserCardMeta(user)}
       </span>
     </button>
   `;
@@ -700,7 +715,7 @@ function renderAuthenticatedUserRows(users, emptyMessage) {
 function renderFriendSearchRows(emptyMessage) {
   const users = getFilteredAuthenticatedUsers();
   const query = friendSearchQuery.trim();
-  const title = query ? 'Search results' : 'Available users';
+  const title = query ? 'Search results' : 'Approved friends';
   const noMatch = query ? 'No approved friend matched that search.' : emptyMessage;
   return `
     <h3 class="user-list-heading">${title}</h3>
@@ -720,18 +735,20 @@ function renderPendingFamilyRows() {
     .map((invite) => `
       <div class="auth-user-row invite-row">
         ${renderAvatar('✉', '#facc15', 'small', '#503600')}
-        <span>
+        <span class="user-card-copy">
           <strong>${escapeHtml(invite.email)}</strong>
-          <small>Invite sent to ${escapeHtml(invite.email)}</small>
+          <small class="user-card-label">Invite sent</small>
+          <small class="user-card-email">${escapeHtml(invite.email)}</small>
         </span>
       </div>
     `);
   const approvalRows = pendingFamilyUsers.map((user) => `
         <button class="auth-user-row" type="button" data-approve-family-user="${escapeAttribute(user.uid)}">
           ${renderUserPhoto(user, 'small')}
-          <span>
+          <span class="user-card-copy">
             <strong>${escapeHtml(getUserName(user))}</strong>
-            <small>Tap to approve for family chat</small>
+            ${renderUserEmailLine(user)}
+            <small class="user-card-label">Tap to approve for family chat</small>
           </span>
         </button>
       `);
@@ -767,9 +784,10 @@ function renderGroupMemberChoice(user) {
     <label class="group-member-choice">
       <input type="checkbox" data-group-member name="members" value="${escapeAttribute(user.uid)}" ${checked} />
       ${renderUserPhoto(user, 'small')}
-      <span>
+      <span class="group-member-copy">
         <strong>${escapeHtml(getUserName(user))}</strong>
-        <small>${renderPresenceStatus(user.onlineStatus, 'mini')}</small>
+        ${renderUserEmailLine(user)}
+        ${renderPresenceStatus(user.onlineStatus, 'mini')}
       </span>
     </label>
   `;
@@ -800,13 +818,13 @@ function renderCreateGroupForm() {
 function renderFriendSearchForm(autoListMessage) {
   return `
     <div class="invite-friend-intro">
-      <h3>Find Friends</h3>
-      <p>Everyone approved appears automatically. Search only filters this list.</p>
+      <h3>Find Family &amp; Friends</h3>
+      <p>Search filters approved Google friends already saved for this app.</p>
     </div>
     <div class="friend-search-form" id="friendSearchForm">
       <label class="friend-search">
         <span>Search friends</span>
-        <input id="friendSearchInput" data-friend-search-input type="search" autocomplete="off" value="${escapeAttribute(friendSearchQuery)}" placeholder="Type a friend's name" />
+        <input id="friendSearchInput" data-friend-search-input type="search" autocomplete="off" value="${escapeAttribute(friendSearchQuery)}" placeholder="Search friends, groups, or messages" />
       </label>
     </div>
     <div class="auth-user-list friend-search-results">
@@ -824,7 +842,7 @@ function renderFriendsInvitesPanel() {
     <div class="friends-invites-shell">
       <div class="invite-friend-intro">
         <h3>Friends & Invites</h3>
-        <p>Approved friends, pending invites, and Gmail invites live here.</p>
+        <p>Approved Google friends, pending invites, and family approvals live here.</p>
       </div>
       ${renderFriendSearchForm('No approved family yet. Invite by Gmail, then approve them after they sign in.')}
     </div>
@@ -987,8 +1005,8 @@ function renderSettingsSearchResults() {
   if (!results.length) {
     return `
       <div class="settings-search-results empty-results">
-        <h2>No settings found</h2>
-        <p>Try searching for chats, account, notifications, or logout.</p>
+        <h2>No match yet</h2>
+        <p>Try chat, privacy, notifications, or logout.</p>
       </div>
     `;
   }

@@ -27,11 +27,44 @@ test('kids-safe shell exposes chat, friends, and settings navigation', () => {
     assert.match(contents, /data-section="settings"/);
     assert.match(contents, /data-panel="friends"/);
     assert.match(contents, /Friends &amp; Invites/);
+    assert.match(contents, /Search friends, groups, or messages/);
     assert.doesNotMatch(contents, /data-section="status"/);
     assert.doesNotMatch(contents, /data-section="channels"/);
     assert.doesNotMatch(contents, /data-section="communities"/);
     assert.doesNotMatch(contents, /data-section="business"/);
     assert.doesNotMatch(contents, /\b(photo|video|file|catalog|advertise|business)\b/i);
+  }
+});
+
+test('kids-safe UI shows friendly cards with Google name email photo and status', () => {
+  for (const relativePath of appFiles) {
+    const contents = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
+
+    assert.match(contents, /function renderUserEmailLine/);
+    assert.match(contents, /function renderUserCardMeta/);
+    assert.match(contents, /signed-in-email/);
+    assert.match(contents, /user-card-email/);
+    assert.match(contents, /Getting your colorful chat room ready/);
+    assert.match(contents, /Text chat and voice calls only/);
+    assert.match(contents, /Find Family &amp; Friends/);
+    assert.match(contents, /Search filters approved Google friends/);
+    assert.match(contents, /No match yet/);
+  }
+});
+
+test('kids-safe UI styles are colorful card based and mobile touch friendly', () => {
+  for (const relativePath of styleFiles) {
+    const contents = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
+
+    assert.match(contents, /--purple: #6f4de2/);
+    assert.match(contents, /--card-shadow:/);
+    assert.match(contents, /\.signed-in-user \{[\s\S]*?linear-gradient[\s\S]*?border-radius: 16px;/);
+    assert.match(contents, /\.signed-in-email,/);
+    assert.match(contents, /\.user-card-email \{/);
+    assert.match(contents, /\.auth-user-row \{[\s\S]*?border-radius: 18px;[\s\S]*?box-shadow: var\(--card-shadow\);/);
+    assert.match(contents, /\.empty-state,[\s\S]*?padding: 24px;/);
+    assert.match(contents, /\.search-box \{[\s\S]*?min-height: 46px;/);
+    assert.match(contents, /@media \(max-width: 850px\) \{[\s\S]*?\.panel-header \{[\s\S]*?display: grid;/);
   }
 });
 

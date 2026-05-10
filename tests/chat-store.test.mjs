@@ -394,8 +394,8 @@ test('friends and invites menu owns approved users, pending invites, and invite 
     assert.ok(autoListIndex < pendingIndex);
     assert.ok(autoListIndex < inviteIndex);
     assert.ok(pendingIndex < inviteIndex);
-    assert.match(contents, /Everyone approved appears automatically/);
-    assert.match(contents, /Available users/);
+    assert.match(contents, /Search filters approved Google friends/);
+    assert.match(contents, /Approved friends/);
     assert.match(contents, /Pending invites/);
     assert.match(contents, /Invite by Gmail/);
     assert.doesNotMatch(contents, /Use Invite Family, then approve them after they sign in/);
@@ -498,7 +498,7 @@ test('new chat flow uses authenticated Google users instead of typed names', () 
     assert.match(contents, /🌙 Away/);
     assert.match(contents, /⚫ Offline/);
     assert.match(contents, /Search friends/);
-    assert.match(contents, /Available users/);
+    assert.match(contents, /Approved friends/);
     assert.match(contents, /id="friendSearchForm"/);
     assert.match(contents, /data-friend-search-input/);
     assert.match(contents, /Friends & Invites/);
@@ -523,7 +523,7 @@ test('new chat automatically shows signed-in users and search only filters them'
   ]) {
     const contents = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
     assert.match(contents, /Search friends/);
-    assert.match(contents, /Available users/);
+    assert.match(contents, /Approved friends/);
     assert.match(contents, /No approved family yet/);
     assert.match(contents, /filterAuthenticatedUsers/);
     assert.match(contents, /data-friend-search-input/);
