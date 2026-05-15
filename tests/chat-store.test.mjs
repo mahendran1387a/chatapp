@@ -375,7 +375,7 @@ test('filters signed-in users locally for automatic discovery', async () => {
   assert.deepEqual(byHiddenEmail.map((user) => user.uid), ['uid-rohan']);
 });
 
-test('friends and invites menu owns approved users, pending invites, and invite by Gmail', () => {
+test('friends and invites menu keeps allow people visible above search', () => {
   for (const relativePath of [
     '../src/app.js',
     '../android/app/src/main/assets/www/src/app.js'
@@ -384,19 +384,19 @@ test('friends and invites menu owns approved users, pending invites, and invite 
     const formStart = contents.indexOf('function renderFriendSearchForm');
     const formEnd = contents.indexOf('function renderFriendsInvitesPanel');
     const formTemplate = contents.slice(formStart, formEnd);
-    const autoListIndex = formTemplate.indexOf('renderFriendSearchRows(autoListMessage)');
     const pendingIndex = formTemplate.indexOf('renderPendingFamilyRows()');
     const inviteIndex = formTemplate.indexOf('renderInviteFamilyForm()');
+    const autoListIndex = formTemplate.indexOf('renderFriendSearchRows(autoListMessage)');
 
-    assert.ok(autoListIndex !== -1);
     assert.ok(pendingIndex !== -1);
     assert.ok(inviteIndex !== -1);
-    assert.ok(autoListIndex < pendingIndex);
-    assert.ok(autoListIndex < inviteIndex);
+    assert.ok(autoListIndex !== -1);
     assert.ok(pendingIndex < inviteIndex);
+    assert.ok(inviteIndex < autoListIndex);
     assert.match(contents, /Search filters approved Google friends/);
     assert.match(contents, /Approved friends/);
-    assert.match(contents, /Pending invites/);
+    assert.match(contents, /Allow People/);
+    assert.match(contents, /Tap a person below to allow them into your family chat/);
     assert.match(contents, /Invite by Gmail/);
     assert.doesNotMatch(contents, /Use Invite Family, then approve them after they sign in/);
   }

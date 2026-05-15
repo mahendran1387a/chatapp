@@ -2196,6 +2196,38 @@ img.profile-edit-photo {
   margin: 16px auto 0;
 }
 
+.pending-family-list {
+  gap: 10px;
+  padding: 14px;
+  background: #fff7d8;
+  border: 2px solid #ffd56a;
+  border-radius: 18px;
+  box-shadow: 0 12px 26px rgba(126, 92, 10, 0.12);
+}
+
+.pending-family-list .user-list-heading {
+  color: #7b5200;
+  font-size: 1.12rem;
+}
+
+.pending-family-copy {
+  margin: 0 0 4px;
+  color: #5b4b1d;
+  font-size: 0.94rem;
+  line-height: 1.35;
+}
+
+.pending-family-list .auth-user-row {
+  min-height: 76px;
+  border-color: #ffd56a;
+  background: #fffdf3;
+  box-shadow: 0 8px 18px rgba(126, 92, 10, 0.09);
+}
+
+.pending-family-list .auth-user-row strong {
+  font-size: 1rem;
+}
+
 .friend-search {
   display: grid;
   gap: 8px;

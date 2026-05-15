@@ -748,15 +748,16 @@ function renderPendingFamilyRows() {
           <span class="user-card-copy">
             <strong>${escapeHtml(getUserName(user))}</strong>
             ${renderUserEmailLine(user)}
-            <small class="user-card-label">Tap to approve for family chat</small>
+            <small class="user-card-label">Tap to allow this person</small>
           </span>
         </button>
       `);
   const rows = [...approvalRows, ...inviteRows];
   return `
-    <div class="auth-user-list pending-family-list">
-      <h3 class="user-list-heading">Pending invites</h3>
-      ${rows.length ? rows.join('') : '<p class="empty-copy">No invited or waiting people right now.</p>'}
+    <div class="auth-user-list pending-family-list" aria-label="Allow people">
+      <h3 class="user-list-heading">Allow People</h3>
+      <p class="pending-family-copy">Tap a person below to allow them into your family chat.</p>
+      ${rows.length ? rows.join('') : '<p class="empty-copy">No one is waiting right now. Ask Sangavi to sign in once, then come back here.</p>'}
     </div>
   `;
 }
@@ -821,6 +822,8 @@ function renderFriendSearchForm(autoListMessage) {
       <h3>Find Family &amp; Friends</h3>
       <p>Search filters approved Google friends already saved for this app.</p>
     </div>
+    ${renderPendingFamilyRows()}
+    ${renderInviteFamilyForm()}
     <div class="friend-search-form" id="friendSearchForm">
       <label class="friend-search">
         <span>Search friends</span>
@@ -831,8 +834,6 @@ function renderFriendSearchForm(autoListMessage) {
       ${renderFriendSearchRows(autoListMessage)}
     </div>
     ${renderCreateGroupButton()}
-    ${renderPendingFamilyRows()}
-    ${renderInviteFamilyForm()}
   `;
 }
 

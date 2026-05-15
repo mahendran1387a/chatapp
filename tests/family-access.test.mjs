@@ -47,9 +47,24 @@ test('app shows a closed-family gate, invite form, and approval controls', () =>
     assert.match(app, /data-approve-family-user/);
     assert.match(app, /Invite by Gmail/);
     assert.match(app, /Approved friends/);
-    assert.match(app, /Pending invites/);
+    assert.match(app, /Allow People/);
+    assert.match(app, /Tap a person below to allow them into your family chat/);
+    assert.match(app, /Ask Sangavi to sign in once/);
     assert.match(app, /Invite sent/);
     assert.match(app, /Ask the app owner to approve you/);
+  }
+});
+
+test('allow people panel is visually prominent', () => {
+  for (const relativePath of [
+    '../styles.css',
+    '../android/app/src/main/assets/www/styles.css'
+  ]) {
+    const styles = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
+
+    assert.match(styles, /\.pending-family-list/);
+    assert.match(styles, /background: #fff7d8/);
+    assert.match(styles, /border: 2px solid #ffd56a/);
   }
 });
 
