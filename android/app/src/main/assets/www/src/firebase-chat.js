@@ -12,6 +12,7 @@ import {
   addDoc,
   arrayUnion,
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getFirestore,
@@ -373,7 +374,8 @@ export async function createFirebaseGroup({ groupName, memberUids = [] }, user) 
     members,
     participants: members,
     createdBy: user.uid,
-    createdAt: serverTimestamp()
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
   };
   const createPath = 'groups/(auto-id)';
   console.info('[Kids WhatsApp] Creating group', { path: createPath, data: group });
@@ -392,6 +394,45 @@ export async function createFirebaseGroup({ groupName, memberUids = [] }, user) 
   }
 }
 
+export async function updateFirebaseGroupName(groupId, groupName, user) {
+  const firebase = ensureFirebase();
+  const cleanName = groupName.trim();
+  if (!firebase) throw new Error('Firebase is not ready yet.');
+  if (!user?.uid) throw new Error('Please sign in again before editing a group.');
+  if (!groupId) throw new Error('Choose a group first.');
+  if (!cleanName) throw new Error('Give your group a name.');
+
+  const groupRef = doc(firebase.db, 'groups', groupId);
+  const groupSnapshot = await getDoc(groupRef);
+  const group = groupSnapshot.exists() ? groupSnapshot.data() : null;
+  if (!group || group.createdBy !== user.uid) {
+    throw new Error('Only the group creator can edit this group.');
+  }
+
+  await updateDoc(groupRef, {
+    groupName: cleanName,
+    updatedAt: serverTimestamp()
+  });
+  return { id: groupId, ...group, groupName: cleanName, updatedAt: Date.now() };
+}
+
+export async function deleteFirebaseGroup(groupId, user) {
+  const firebase = ensureFirebase();
+  if (!firebase) throw new Error('Firebase is not ready yet.');
+  if (!user?.uid) throw new Error('Please sign in again before deleting a group.');
+  if (!groupId) throw new Error('Choose a group first.');
+
+  const groupRef = doc(firebase.db, 'groups', groupId);
+  const groupSnapshot = await getDoc(groupRef);
+  const group = groupSnapshot.exists() ? groupSnapshot.data() : null;
+  if (!group || group.createdBy !== user.uid) {
+    throw new Error('Only the group creator can delete this group.');
+  }
+
+  await deleteDoc(groupRef);
+  return groupId;
+}
+
 export function subscribeUserGroups(currentUid, onGroups, onError) {
   const firebase = ensureFirebase();
   if (!firebase || !currentUid) {
@@ -401,7 +442,12 @@ export function subscribeUserGroups(currentUid, onGroups, onError) {
 
   let memberGroups = [];
   let participantGroups = [];
-  const emitGroups = () => onGroups(mergeFirebaseGroups(memberGroups, participantGroups));
+  let memberGroupsLoaded = false;
+  let participantGroupsLoaded = false;
+  const emitGroups = () => {
+    if (!memberGroupsLoaded || !participantGroupsLoaded) return;
+    onGroups(mergeFirebaseGroups(memberGroups, participantGroups));
+  };
   const groupCollection = collection(firebase.db, 'groups');
   const memberGroupsQuery = query(
     groupCollection,
@@ -415,6 +461,7 @@ export function subscribeUserGroups(currentUid, onGroups, onError) {
   const unsubscribeMembers = onSnapshot(
     memberGroupsQuery,
     (snapshot) => {
+      memberGroupsLoaded = true;
       memberGroups = mapGroupSnapshot(snapshot);
       emitGroups();
     },
@@ -423,6 +470,7 @@ export function subscribeUserGroups(currentUid, onGroups, onError) {
   const unsubscribeParticipants = onSnapshot(
     participantGroupsQuery,
     (snapshot) => {
+      participantGroupsLoaded = true;
       participantGroups = mapGroupSnapshot(snapshot);
       emitGroups();
     },

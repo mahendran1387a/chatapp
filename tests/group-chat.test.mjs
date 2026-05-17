@@ -115,6 +115,8 @@ test('app exposes a real Create Group flow from approved signed-in users', () =>
     assert.match(app, /selectedGroupMemberIds\.size < 1/);
     assert.match(app, /allowedMemberIds/);
     assert.match(app, /createFirebaseGroup/);
+    assert.match(app, /updateFirebaseGroupName/);
+    assert.match(app, /deleteFirebaseGroup/);
     assert.match(app, /subscribeUserGroups/);
     assert.match(app, /sendFirebaseGroupMessage/);
     assert.match(app, /subscribeGroupMessages/);
@@ -123,6 +125,12 @@ test('app exposes a real Create Group flow from approved signed-in users', () =>
     assert.match(app, /activeContact\.groupId/);
     assert.match(app, /function isFirestoreGroupContact\(contact\)/);
     assert.match(app, /function getPersistableContacts\(\)/);
+    assert.match(app, /previousGroupContacts/);
+    assert.match(app, /!userGroupsLoaded/);
+    assert.match(app, /id="editGroupForm"/);
+    assert.match(app, /data-contact-menu-action="edit-group"/);
+    assert.match(app, /data-contact-menu-action="delete-group"/);
+    assert.doesNotMatch(app, /return state\.contacts\.filter\(\(contact\) => !isFirestoreGroupContact\(contact\)\)/);
   }
 });
 
@@ -131,6 +139,8 @@ test('Firebase group helpers and rules protect group membership and sender ident
   const rules = readFileSync(new URL('../firestore.rules', import.meta.url), 'utf8');
 
   assert.match(firebase, /createFirebaseGroup/);
+  assert.match(firebase, /updateFirebaseGroupName/);
+  assert.match(firebase, /deleteFirebaseGroup/);
   assert.match(firebase, /collection\(firebase\.db, 'groups'\)/);
   assert.match(firebase, /type: 'group'/);
   assert.match(firebase, /participants: members/);
@@ -145,6 +155,9 @@ test('Firebase group helpers and rules protect group membership and sender ident
   assert.doesNotMatch(firebase, /where\('type', '==', 'group'\)/);
   assert.match(firebase, /where\('members', 'array-contains', currentUid\)/);
   assert.match(firebase, /where\('participants', 'array-contains', currentUid\)/);
+  assert.match(firebase, /memberGroupsLoaded/);
+  assert.match(firebase, /participantGroupsLoaded/);
+  assert.match(firebase, /if \(!memberGroupsLoaded \|\| !participantGroupsLoaded\) return/);
   assert.match(firebase, /data\.type === 'group'/);
   assert.match(firebase, /mergeFirebaseGroups/);
   assert.match(firebase, /isUserInGroup/);
@@ -152,6 +165,8 @@ test('Firebase group helpers and rules protect group membership and sender ident
   assert.match(firebase, /subscribeGroupMessages/);
   assert.match(rules, /match \/groups\/\{groupId\}/);
   assert.match(rules, /validGroupCreate\(\)/);
+  assert.match(rules, /validGroupUpdate\(\)/);
+  assert.match(rules, /validGroupDelete\(\)/);
   assert.match(rules, /'type'/);
   assert.match(rules, /request\.resource\.data\.type == 'group'/);
   assert.match(rules, /participants/);
@@ -160,5 +175,6 @@ test('Firebase group helpers and rules protect group membership and sender ident
   assert.match(rules, /members == request\.resource\.data\.participants/);
   assert.match(rules, /members\.size\(\) >= 2/);
   assert.match(rules, /createdBy == request\.auth\.uid/);
+  assert.match(rules, /allow delete: if validGroupDelete\(\)/);
   assert.match(rules, /validGroupMessage\(groupId\)/);
 });

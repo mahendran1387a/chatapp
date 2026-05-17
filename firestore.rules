@@ -215,7 +215,7 @@ service cloud.firestore {
 
     function validGroupCreate() {
       return approvedUser(request.auth.uid)
-        && request.resource.data.keys().hasOnly(['groupName', 'type', 'members', 'participants', 'createdBy', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['groupName', 'type', 'members', 'participants', 'createdBy', 'createdAt', 'updatedAt'])
         && request.resource.data.groupName is string
         && request.resource.data.type == 'group'
         && request.resource.data.members is list
@@ -229,7 +229,21 @@ service cloud.firestore {
     }
 
     function validGroupUpdate() {
-      return false;
+      return approvedUser(request.auth.uid)
+        && resource.data.createdBy == request.auth.uid
+        && request.resource.data.keys().hasOnly(['groupName', 'type', 'members', 'participants', 'createdBy', 'createdAt', 'updatedAt'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['groupName', 'updatedAt'])
+        && request.resource.data.groupName is string
+        && request.resource.data.type == resource.data.type
+        && request.resource.data.members == resource.data.members
+        && request.resource.data.participants == resource.data.participants
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.createdAt == resource.data.createdAt;
+    }
+
+    function validGroupDelete() {
+      return approvedUser(request.auth.uid)
+        && resource.data.createdBy == request.auth.uid;
     }
 
     function validGroupMessage(groupId) {
@@ -271,7 +285,7 @@ service cloud.firestore {
       allow read: if userIsGroupParticipant();
       allow create: if validGroupCreate();
       allow update: if validGroupUpdate();
-      allow delete: if false;
+      allow delete: if validGroupDelete();
 
       match /messages/{messageId} {
         allow read: if groupParticipant(groupId);

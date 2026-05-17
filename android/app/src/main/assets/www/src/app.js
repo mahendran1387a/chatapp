@@ -20,6 +20,7 @@ import {
 import {
   approveFamilyMember,
   createFirebaseGroup,
+  deleteFirebaseGroup,
   getFirebaseSetupStatus,
   isFamilyOwnerEmail,
   logoutGoogleUser,
@@ -36,7 +37,8 @@ import {
   subscribeGroupMessages,
   subscribePendingFamilyUsers,
   subscribeConversationMessages,
-  subscribeUserGroups
+  subscribeUserGroups,
+  updateFirebaseGroupName
 } from './firebase-chat.js';
 
 const savedChatStorageKey = 'chatapp.savedChats.v1';
@@ -68,7 +70,7 @@ function isFirestoreGroupContact(contact) {
 }
 
 function getPersistableContacts() {
-  return state.contacts.filter((contact) => !isFirestoreGroupContact(contact));
+  return state.contacts;
 }
 
 function getPersistedChatPayload() {
@@ -1505,15 +1507,22 @@ function showContactMenu(contactId, anchor = {}) {
   closeContactMenu();
   closeMessageMenu();
   activeContactMenuId = contactId;
+  const isGroup = Boolean(contact.groupId);
+  const canManageGroup = isGroup && contact.createdBy === currentAuthUser?.uid;
+  const safeContactId = escapeAttribute(contact.id);
+  const contactDetail = isGroup ? getGroupMemberLabel(contact) : getContactEmail(contact) || contact.phone || 'No contact detail saved';
 
   const menu = document.createElement('div');
   menu.className = 'contact-context-menu';
   menu.setAttribute('role', 'menu');
   menu.innerHTML = `
-    <strong>${contact.name}</strong>
-    <small>${getContactEmail(contact) || contact.phone || 'No contact detail saved'}</small>
-    <small class="verified-contact-note">Google sign-in keeps names real</small>
-    <button type="button" class="danger-row" data-contact-menu-action="delete-contact" data-contact-id="${contact.id}">Remove chat shortcut</button>
+    <strong>${escapeHtml(contact.name)}</strong>
+    <small>${escapeHtml(contactDetail)}</small>
+    <small class="verified-contact-note">${isGroup ? 'Saved in your family chat database' : 'Google sign-in keeps names real'}</small>
+    ${isGroup ? '<button type="button" data-contact-menu-action="edit-group" data-contact-id="' + safeContactId + '">Edit group name</button>' : ''}
+    ${canManageGroup
+      ? '<button type="button" class="danger-row" data-contact-menu-action="delete-group" data-contact-id="' + safeContactId + '">Delete group</button>'
+      : '<button type="button" class="danger-row" data-contact-menu-action="delete-contact" data-contact-id="' + safeContactId + '">' + (isGroup ? 'Remove group shortcut' : 'Remove chat shortcut') + '</button>'}
   `;
   document.body.append(menu);
 
@@ -1522,6 +1531,42 @@ function showContactMenu(contactId, anchor = {}) {
   const top = Math.min(anchor.y ?? window.innerHeight / 2, window.innerHeight - rect.height - 12);
   menu.style.left = `${Math.max(12, left)}px`;
   menu.style.top = `${Math.max(12, top)}px`;
+}
+
+function showEditGroupDialog(contactId) {
+  const contact = getContactById(contactId);
+  if (!contact?.groupId) return;
+  closeContactMenu();
+  const existing = document.querySelector('.action-dialog-backdrop');
+  if (existing) existing.remove();
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'action-dialog-backdrop';
+  backdrop.innerHTML = `
+    <section class="action-dialog menu-dialog" role="dialog" aria-label="Edit group">
+      <button class="dialog-close" aria-label="Close">x</button>
+      <form class="business-profile-form dialog-form" id="editGroupForm" data-group-id="${escapeAttribute(contact.groupId)}">
+        <h2>Edit group</h2>
+        <p>Change the group name. Members stay the same.</p>
+        <div class="business-fields">
+          <label class="profile-field">
+            <span>Group name</span>
+            <input name="groupName" type="text" autocomplete="off" maxlength="40" value="${escapeAttribute(contact.name)}" required />
+          </label>
+        </div>
+        <button class="detail-action" type="submit">Save group</button>
+      </form>
+    </section>
+  `;
+  document.body.append(backdrop);
+  backdrop.addEventListener('click', (event) => {
+    if (event.target === backdrop || event.target.closest('.dialog-close')) {
+      backdrop.remove();
+    }
+  });
+  const input = backdrop.querySelector('input[name="groupName"]');
+  input?.focus();
+  input?.select();
 }
 
 function showMessageMenu(contactId, messageId, anchor = {}) {
@@ -1862,6 +1907,27 @@ document.addEventListener('click', (event) => {
   const contactMenuAction = event.target.closest('[data-contact-menu-action]');
   if (contactMenuAction) {
     const contactId = contactMenuAction.dataset.contactId;
+    const contact = getContactById(contactId);
+    const action = contactMenuAction.dataset.contactMenuAction;
+    if (action === 'edit-group') {
+      showEditGroupDialog(contactId);
+      return;
+    }
+    if (action === 'delete-group') {
+      if (!contact?.groupId) return;
+      deleteFirebaseGroup(contact.groupId, currentAuthUser)
+        .then(() => {
+          firebaseGroups = firebaseGroups.filter((group) => group.id !== contact.groupId);
+          state = deleteContactChat(state, contactId);
+          state = reconcileAuthenticatedContacts(state, authenticatedUsers, currentAuthUser.uid, firebaseGroups);
+          closeContactMenu();
+          saveChatState();
+          renderAll();
+          showToast('Group deleted');
+        })
+        .catch(showFirebaseError);
+      return;
+    }
     state = deleteContactChat(state, contactId);
     closeContactMenu();
     saveChatState();
@@ -2083,6 +2149,26 @@ document.addEventListener('submit', (event) => {
     return;
   }
 
+  const editGroupForm = event.target.closest('#editGroupForm');
+  if (editGroupForm) {
+    event.preventDefault();
+    const formData = new FormData(editGroupForm);
+    const groupName = String(formData.get('groupName') ?? '');
+    const groupId = editGroupForm.dataset.groupId;
+    updateFirebaseGroupName(groupId, groupName, currentAuthUser)
+      .then((group) => {
+        firebaseGroups = firebaseGroups.map((item) => (item.id === group.id ? { ...item, ...group } : item));
+        state = reconcileAuthenticatedContacts(state, authenticatedUsers, currentAuthUser.uid, firebaseGroups);
+        state = selectContact(state, group.id);
+        editGroupForm.closest('.action-dialog-backdrop')?.remove();
+        saveChatState();
+        renderAll();
+        showToast('Group saved');
+      })
+      .catch(showFirebaseError);
+    return;
+  }
+
   const editMessageForm = event.target.closest('#editMessageForm');
   if (editMessageForm) {
     event.preventDefault();
@@ -2149,7 +2235,18 @@ function resetApprovedChatLoadingState() {
 
 function syncApprovedFamilyContacts(user) {
   const activeContactIdBeforeSync = state.activeContactId;
+  const previousGroupContacts = state.contacts.filter(isFirestoreGroupContact);
   state = reconcileAuthenticatedContacts(state, authenticatedUsers, user.uid, firebaseGroups);
+  if (!userGroupsLoaded && previousGroupContacts.length) {
+    const existingIds = new Set(state.contacts.map((contact) => contact.id));
+    state = {
+      ...state,
+      contacts: [
+        ...state.contacts,
+        ...previousGroupContacts.filter((contact) => !existingIds.has(contact.id))
+      ]
+    };
+  }
   if (
     !areApprovedChatListsReady() &&
     activeContactIdBeforeSync &&

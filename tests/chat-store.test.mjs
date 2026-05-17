@@ -83,7 +83,7 @@ test('restores saved chats after reload', () => {
   assert.equal(getActiveContact(state).phone, '+971 50 123 4567');
 });
 
-test('does not restore saved groups before Firestore sync', () => {
+test('restores saved group shortcuts while Firestore reloads after refresh', () => {
   const savedFriend = buildSavedContact({ id: 'uid-aisha', name: 'Aisha Friend' });
   const savedGroup = buildSavedContact({
     id: 'group-family',
@@ -98,8 +98,10 @@ test('does not restore saved groups before Firestore sync', () => {
     activeContactId: savedGroup.id
   });
 
-  assert.deepEqual(state.contacts.map((contact) => contact.id), ['uid-aisha']);
-  assert.equal(state.activeContactId, 'uid-aisha');
+  assert.deepEqual(state.contacts.map((contact) => contact.id), ['group-family', 'uid-aisha']);
+  assert.equal(state.activeContactId, 'group-family');
+  assert.equal(getActiveContact(state).group, true);
+  assert.deepEqual(getActiveContact(state).memberUids, ['uid-me', 'uid-aisha']);
 });
 
 test('adds a Gmail display line to older saved contacts without one', () => {

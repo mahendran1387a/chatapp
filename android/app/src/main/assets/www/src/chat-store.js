@@ -349,7 +349,7 @@ function isFirestoreGroupContact(contact) {
 }
 
 function isRestorableSavedContact(contact) {
-  return isValidContact(contact) && !isReferenceContact(contact) && !isFirestoreGroupContact(contact);
+  return isValidContact(contact) && !isReferenceContact(contact);
 }
 
 function isReferenceContact(contact) {
@@ -446,7 +446,9 @@ function normalizeGroupMembers(group) {
     ? group.members
     : Array.isArray(group.participants)
       ? group.participants
-      : [];
+      : Array.isArray(group.memberUids)
+        ? group.memberUids
+        : [];
   return [...new Set(members.filter((uid) => typeof uid === 'string' && uid.trim()).map((uid) => uid.trim()))];
 }
 
@@ -479,6 +481,20 @@ function buildGroupContact(group, existingContact = {}) {
 }
 
 function withContactProfile(contact) {
+  if (isFirestoreGroupContact(contact)) {
+    const groupId = contact.groupId ?? contact.id;
+    return buildGroupContact(
+      {
+        ...contact,
+        id: groupId,
+        groupName: contact.name,
+        members: contact.memberUids ?? contact.members,
+        participants: contact.participants ?? contact.memberUids ?? contact.members
+      },
+      contact
+    );
+  }
+
   const email = typeof contact.email === 'string' && contact.email.trim()
     ? contact.email.trim()
     : makeGmailFromName(contact.name);
