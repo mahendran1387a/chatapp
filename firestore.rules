@@ -202,6 +202,23 @@ service cloud.firestore {
         (data.participants is list && data.participants.hasAny([request.auth.uid]));
     }
 
+    function groupHost(data) {
+      return ('hostUid' in data) && data.hostUid == request.auth.uid;
+    }
+
+    function groupAdmin(data) {
+      return ('adminUids' in data) && data.adminUids is list && data.adminUids.hasAny([request.auth.uid]);
+    }
+
+    function groupManager(data) {
+      return approvedUser(request.auth.uid)
+        && (
+          data.createdBy == request.auth.uid ||
+          groupHost(data) ||
+          groupAdmin(data)
+        );
+    }
+
     function userIsGroupParticipant() {
       return approvedUser(request.auth.uid)
         && groupHasSignedInUser(resource.data);
@@ -215,7 +232,7 @@ service cloud.firestore {
 
     function validGroupCreate() {
       return approvedUser(request.auth.uid)
-        && request.resource.data.keys().hasOnly(['groupName', 'type', 'members', 'participants', 'createdBy', 'createdAt', 'updatedAt'])
+        && request.resource.data.keys().hasOnly(['groupName', 'type', 'members', 'participants', 'createdBy', 'createdAt', 'updatedAt', 'hostUid', 'adminUids'])
         && request.resource.data.groupName is string
         && request.resource.data.type == 'group'
         && request.resource.data.members is list
@@ -225,25 +242,28 @@ service cloud.firestore {
         && request.resource.data.members == request.resource.data.participants
         && request.resource.data.members.hasAny([request.auth.uid])
         && request.resource.data.participants.hasAny([request.auth.uid])
-        && request.resource.data.createdBy == request.auth.uid;
+        && request.resource.data.createdBy == request.auth.uid
+        && (!('hostUid' in request.resource.data) || request.resource.data.hostUid == request.auth.uid)
+        && (!('adminUids' in request.resource.data) || request.resource.data.adminUids is list);
     }
 
     function validGroupUpdate() {
       return approvedUser(request.auth.uid)
-        && resource.data.createdBy == request.auth.uid
-        && request.resource.data.keys().hasOnly(['groupName', 'type', 'members', 'participants', 'createdBy', 'createdAt', 'updatedAt'])
+        && groupManager(resource.data)
+        && request.resource.data.keys().hasOnly(['groupName', 'type', 'members', 'participants', 'createdBy', 'createdAt', 'updatedAt', 'hostUid', 'adminUids'])
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['groupName', 'updatedAt'])
         && request.resource.data.groupName is string
         && request.resource.data.type == resource.data.type
         && request.resource.data.members == resource.data.members
         && request.resource.data.participants == resource.data.participants
         && request.resource.data.createdBy == resource.data.createdBy
-        && request.resource.data.createdAt == resource.data.createdAt;
+        && request.resource.data.createdAt == resource.data.createdAt
+        && (!('hostUid' in resource.data) || request.resource.data.hostUid == resource.data.hostUid)
+        && (!('adminUids' in resource.data) || request.resource.data.adminUids == resource.data.adminUids);
     }
 
     function validGroupDelete() {
-      return approvedUser(request.auth.uid)
-        && resource.data.createdBy == request.auth.uid;
+      return groupManager(resource.data);
     }
 
     function validGroupMessage(groupId) {

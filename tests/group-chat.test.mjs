@@ -71,6 +71,36 @@ test('reconciles participant-only Firestore groups for existing group documents'
   assert.deepEqual(groups[0].memberUids, ['uid-me', 'uid-aisha']);
 });
 
+test('group contacts keep creator, host, and admin IDs for management permissions', () => {
+  const state = createInitialState();
+  const updated = reconcileAuthenticatedContacts(
+    state,
+    [
+      { uid: 'uid-me', email: 'me@gmail.com', displayName: 'Me' },
+      { uid: 'uid-aisha', email: 'aisha@gmail.com', displayName: 'Aisha' }
+    ],
+    'uid-aisha',
+    [
+      {
+        id: 'group-family',
+        groupName: 'Family Crew',
+        type: 'group',
+        members: ['uid-me', 'uid-aisha'],
+        participants: ['uid-me', 'uid-aisha'],
+        createdBy: 'uid-me',
+        hostUid: 'uid-me',
+        adminUids: ['uid-aisha']
+      }
+    ]
+  );
+
+  const group = filterContacts(updated, { filter: 'groups' })[0];
+
+  assert.equal(group.createdBy, 'uid-me');
+  assert.equal(group.hostUid, 'uid-me');
+  assert.deepEqual(group.adminUids, ['uid-aisha']);
+});
+
 test('group chats can be selected and accept outgoing text messages', () => {
   const state = reconcileAuthenticatedContacts(
     createInitialState(),
@@ -121,8 +151,11 @@ test('app exposes a real Create Group flow from approved signed-in users', () =>
     assert.match(app, /sendFirebaseGroupMessage/);
     assert.match(app, /subscribeGroupMessages/);
     assert.match(app, /explainFirebaseError/);
-    assert.match(app, /Firebase rules need publishing/);
+    assert.match(app, /Group delete is blocked by Firestore rules/);
+    assert.match(app, /showFirebaseError\(error, 'deleteGroup'\)/);
     assert.match(app, /activeContact\.groupId/);
+    assert.match(app, /function canCurrentUserManageGroup\(contact\)/);
+    assert.match(app, /canCurrentUserManageGroup\(contact\)/);
     assert.match(app, /function isFirestoreGroupContact\(contact\)/);
     assert.match(app, /function getPersistableContacts\(\)/);
     assert.match(app, /previousGroupContacts/);
@@ -130,6 +163,7 @@ test('app exposes a real Create Group flow from approved signed-in users', () =>
     assert.match(app, /id="editGroupForm"/);
     assert.match(app, /data-contact-menu-action="edit-group"/);
     assert.match(app, /data-contact-menu-action="delete-group"/);
+    assert.doesNotMatch(app, /Saved in your family chat database/);
     assert.doesNotMatch(app, /return state\.contacts\.filter\(\(contact\) => !isFirestoreGroupContact\(contact\)\)/);
   }
 });
@@ -141,6 +175,9 @@ test('Firebase group helpers and rules protect group membership and sender ident
   assert.match(firebase, /createFirebaseGroup/);
   assert.match(firebase, /updateFirebaseGroupName/);
   assert.match(firebase, /deleteFirebaseGroup/);
+  assert.match(firebase, /canManageFirebaseGroup/);
+  assert.match(firebase, /hostUid/);
+  assert.match(firebase, /adminUids/);
   assert.match(firebase, /collection\(firebase\.db, 'groups'\)/);
   assert.match(firebase, /type: 'group'/);
   assert.match(firebase, /participants: members/);
@@ -167,6 +204,9 @@ test('Firebase group helpers and rules protect group membership and sender ident
   assert.match(rules, /validGroupCreate\(\)/);
   assert.match(rules, /validGroupUpdate\(\)/);
   assert.match(rules, /validGroupDelete\(\)/);
+  assert.match(rules, /groupManager/);
+  assert.match(rules, /hostUid/);
+  assert.match(rules, /adminUids/);
   assert.match(rules, /'type'/);
   assert.match(rules, /request\.resource\.data\.type == 'group'/);
   assert.match(rules, /participants/);

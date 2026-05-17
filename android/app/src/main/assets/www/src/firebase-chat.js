@@ -319,6 +319,20 @@ function isUserInGroup(group, uid) {
   return members.includes(uid) || participants.includes(uid);
 }
 
+function normalizeManagerUid(uid) {
+  return typeof uid === 'string' ? uid.trim() : '';
+}
+
+function getGroupManagerUids(group) {
+  const adminUids = Array.isArray(group?.adminUids) ? group.adminUids : [];
+  return [...new Set([group?.createdBy, group?.hostUid, ...adminUids].map(normalizeManagerUid).filter(Boolean))];
+}
+
+export function canManageFirebaseGroup(group, uid) {
+  const currentUid = normalizeManagerUid(uid);
+  return Boolean(currentUid && getGroupManagerUids(group).includes(currentUid));
+}
+
 function mapGroupSnapshot(snapshot) {
   return snapshot.docs
     .map((item) => ({ id: item.id, ...item.data() }))
@@ -404,8 +418,8 @@ export async function updateFirebaseGroupName(groupId, groupName, user) {
   const groupRef = doc(firebase.db, 'groups', groupId);
   const groupSnapshot = await getDoc(groupRef);
   const group = groupSnapshot.exists() ? groupSnapshot.data() : null;
-  if (!group || group.createdBy !== user.uid) {
-    throw new Error('Only the group creator can edit this group.');
+  if (!group || !canManageFirebaseGroup(group, user.uid)) {
+    throw new Error('Only the group creator, host, or admin can edit this group.');
   }
 
   await updateDoc(groupRef, {
@@ -424,8 +438,8 @@ export async function deleteFirebaseGroup(groupId, user) {
   const groupRef = doc(firebase.db, 'groups', groupId);
   const groupSnapshot = await getDoc(groupRef);
   const group = groupSnapshot.exists() ? groupSnapshot.data() : null;
-  if (!group || group.createdBy !== user.uid) {
-    throw new Error('Only the group creator can delete this group.');
+  if (!group || !canManageFirebaseGroup(group, user.uid)) {
+    throw new Error('Only the group creator, host, or admin can delete this group.');
   }
 
   await deleteDoc(groupRef);

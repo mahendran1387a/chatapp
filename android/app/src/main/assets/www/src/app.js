@@ -351,6 +351,15 @@ function isCurrentUserApproved() {
   return Boolean(currentAuthUser && (isCurrentUserOwner() || currentUserProfile?.approved === true));
 }
 
+function getGroupManagerIds(contact) {
+  const adminUids = Array.isArray(contact?.adminUids) ? contact.adminUids : [];
+  return [...new Set([contact?.createdBy, contact?.hostUid, ...adminUids].filter((uid) => typeof uid === 'string' && uid.trim()))];
+}
+
+function canCurrentUserManageGroup(contact) {
+  return Boolean(contact?.groupId && currentAuthUser?.uid && getGroupManagerIds(contact).includes(currentAuthUser.uid));
+}
+
 function insertEmojiIntoMessage(input, emoji) {
   const start = input.selectionStart ?? input.value.length;
   const end = input.selectionEnd ?? start;
@@ -1472,9 +1481,12 @@ function showToast(text) {
   window.setTimeout(() => toast.remove(), 1800);
 }
 
-function explainFirebaseError(error) {
+function explainFirebaseError(error, context = '') {
   const message = error?.message ?? '';
   if (error?.code === 'permission-denied' || message.includes('Missing or insufficient permissions')) {
+    if (context === 'deleteGroup') {
+      return 'Group delete is blocked by Firestore rules. Only the group creator, host, or admin can delete it. Publish the latest Firebase rules if this is your group.';
+    }
     return 'Firebase rules need publishing, or this account is not approved yet.';
   }
   if (error?.code === 'failed-precondition' || message.toLowerCase().includes('index')) {
@@ -1483,8 +1495,8 @@ function explainFirebaseError(error) {
   return message || 'Something went wrong. Please try again.';
 }
 
-function showFirebaseError(error) {
-  showToast(explainFirebaseError(error));
+function showFirebaseError(error, context = '') {
+  showToast(explainFirebaseError(error, context));
 }
 
 function closeContactMenu() {
@@ -1512,9 +1524,14 @@ function showContactMenu(contactId, anchor = {}) {
   closeMessageMenu();
   activeContactMenuId = contactId;
   const isGroup = Boolean(contact.groupId);
-  const canManageGroup = isGroup && contact.createdBy === currentAuthUser?.uid;
+  const canManageGroup = canCurrentUserManageGroup(contact);
   const safeContactId = escapeAttribute(contact.id);
   const contactDetail = isGroup ? getGroupMemberLabel(contact) : getContactEmail(contact) || contact.phone || 'No contact detail saved';
+  const verifiedNote = isGroup
+    ? canManageGroup
+      ? 'You can manage this group'
+      : 'Only the group owner can delete it'
+    : 'Google sign-in keeps names real';
 
   const menu = document.createElement('div');
   menu.className = 'contact-context-menu';
@@ -1522,8 +1539,8 @@ function showContactMenu(contactId, anchor = {}) {
   menu.innerHTML = `
     <strong>${escapeHtml(contact.name)}</strong>
     <small>${escapeHtml(contactDetail)}</small>
-    <small class="verified-contact-note">${isGroup ? 'Saved in your family chat database' : 'Google sign-in keeps names real'}</small>
-    ${isGroup ? '<button type="button" data-contact-menu-action="edit-group" data-contact-id="' + safeContactId + '">Edit group name</button>' : ''}
+    <small class="verified-contact-note">${verifiedNote}</small>
+    ${isGroup && canManageGroup ? '<button type="button" data-contact-menu-action="edit-group" data-contact-id="' + safeContactId + '">Edit group name</button>' : ''}
     ${canManageGroup
       ? '<button type="button" class="danger-row" data-contact-menu-action="delete-group" data-contact-id="' + safeContactId + '">Delete group</button>'
       : '<button type="button" class="danger-row" data-contact-menu-action="delete-contact" data-contact-id="' + safeContactId + '">' + (isGroup ? 'Remove group shortcut' : 'Remove chat shortcut') + '</button>'}
@@ -1919,6 +1936,11 @@ document.addEventListener('click', (event) => {
     }
     if (action === 'delete-group') {
       if (!contact?.groupId) return;
+      if (!canCurrentUserManageGroup(contact)) {
+        closeContactMenu();
+        showToast('Only the group creator, host, or admin can delete this group.');
+        return;
+      }
       deleteFirebaseGroup(contact.groupId, currentAuthUser)
         .then(() => {
           firebaseGroups = firebaseGroups.filter((group) => group.id !== contact.groupId);
@@ -1929,7 +1951,7 @@ document.addEventListener('click', (event) => {
           renderAll();
           showToast('Group deleted');
         })
-        .catch(showFirebaseError);
+        .catch((error) => showFirebaseError(error, 'deleteGroup'));
       return;
     }
     state = deleteContactChat(state, contactId);

@@ -455,6 +455,11 @@ function normalizeGroupMembers(group) {
 function buildGroupContact(group, existingContact = {}) {
   const name = getGroupName(group);
   const memberUids = normalizeGroupMembers(group);
+  const adminUids = Array.isArray(group.adminUids)
+    ? group.adminUids.filter((uid) => typeof uid === 'string' && uid.trim())
+    : Array.isArray(existingContact.adminUids)
+      ? existingContact.adminUids
+      : [];
   return {
     ...existingContact,
     id: group.id,
@@ -476,6 +481,8 @@ function buildGroupContact(group, existingContact = {}) {
     memberUids,
     participants: Array.isArray(group.participants) ? group.participants : memberUids,
     createdBy: group.createdBy ?? existingContact.createdBy ?? '',
+    hostUid: group.hostUid ?? existingContact.hostUid ?? '',
+    adminUids,
     messages: existingContact.messages ?? []
   };
 }
