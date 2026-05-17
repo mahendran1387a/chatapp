@@ -2117,6 +2117,7 @@ img.profile-edit-photo {
   display: none;
   place-items: center;
   padding: 20px;
+  overflow: hidden;
   background:
     radial-gradient(circle at 20% 20%, rgba(0, 168, 132, 0.1), transparent 28%),
     #f7f5f3;
@@ -2143,6 +2144,12 @@ img.profile-edit-photo {
   border-radius: 8px;
   box-shadow: 0 18px 54px rgba(17, 27, 33, 0.14);
   text-align: center;
+  max-height: calc(100svh - 40px);
+  overflow: hidden;
+}
+
+.family-gate {
+  grid-template-rows: auto auto minmax(0, auto) auto;
 }
 
 .auth-card h1 {
@@ -2161,6 +2168,15 @@ img.profile-edit-photo {
   margin: 0 0 18px;
   color: var(--muted);
   line-height: 1.45;
+}
+
+.family-gate-message {
+  max-height: min(28svh, 180px);
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  scrollbar-gutter: stable;
+  padding: 0 4px;
 }
 
 .auth-logo {
@@ -2203,6 +2219,9 @@ img.profile-edit-photo {
   border: 2px solid #ffd56a;
   border-radius: 18px;
   box-shadow: 0 12px 26px rgba(126, 92, 10, 0.12);
+  grid-template-rows: auto auto minmax(0, auto);
+  max-height: min(48svh, 420px);
+  overflow: hidden;
 }
 
 .pending-family-list .user-list-heading {
@@ -2211,10 +2230,29 @@ img.profile-edit-photo {
 }
 
 .pending-family-copy {
-  margin: 0 0 4px;
+  margin: 0;
   color: #5b4b1d;
   font-size: 0.94rem;
   line-height: 1.35;
+}
+
+.pending-family-message {
+  max-height: min(18svh, 120px);
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  scrollbar-gutter: stable;
+  padding-right: 4px;
+}
+
+.pending-family-people {
+  display: grid;
+  gap: 8px;
+  min-height: 0;
+  max-height: min(30svh, 240px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
 }
 
 .pending-family-list .auth-user-row {
@@ -2445,6 +2483,30 @@ img.profile-edit-photo {
 }
 
 @media (max-width: 560px) {
+  .auth-gate {
+    padding: 12px;
+  }
+
+  .auth-card {
+    max-height: calc(100svh - 24px);
+  }
+
+  .family-gate-message {
+    max-height: min(24svh, 150px);
+  }
+
+  .pending-family-list {
+    max-height: min(52svh, 380px);
+  }
+
+  .pending-family-message {
+    max-height: min(16svh, 100px);
+  }
+
+  .pending-family-people {
+    max-height: min(30svh, 220px);
+  }
+
   .friend-search-form {
     grid-template-columns: 1fr;
   }

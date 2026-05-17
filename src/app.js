@@ -460,7 +460,7 @@ function renderFamilyAccessGate() {
     <div class="auth-card family-gate">
       <img src="app-icon.svg" alt="" />
       <h1>Only approved family and friends can chat here</h1>
-      <p>Ask the app owner to approve you. Your safe profile has been saved and will appear in the owner's approval list.</p>
+      <p class="family-gate-message">Ask the app owner to approve you. Your safe profile has been saved and will appear in the owner's approval list.</p>
       <button class="google-sign-in" type="button" data-auth-logout>Log out</button>
     </div>
   `;
@@ -758,8 +758,12 @@ function renderPendingFamilyRows() {
   return `
     <div class="auth-user-list pending-family-list" aria-label="Allow people">
       <h3 class="user-list-heading">Allow People</h3>
-      <p class="pending-family-copy">Tap a person below to allow them into your family chat.</p>
-      ${rows.length ? rows.join('') : '<p class="empty-copy">No one is waiting right now. Ask Sangavi to sign in once, then come back here.</p>'}
+      <div class="pending-family-message">
+        <p class="pending-family-copy">Tap a person below to allow them into your family chat.</p>
+      </div>
+      <div class="pending-family-people" aria-label="People waiting to be allowed">
+        ${rows.length ? rows.join('') : '<p class="empty-copy">No one is waiting right now. Ask Sangavi to sign in once, then come back here.</p>'}
+      </div>
     </div>
   `;
 }

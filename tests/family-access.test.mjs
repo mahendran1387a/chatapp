@@ -48,6 +48,9 @@ test('app shows a closed-family gate, invite form, and approval controls', () =>
     assert.match(app, /Invite by Gmail/);
     assert.match(app, /Approved friends/);
     assert.match(app, /Allow People/);
+    assert.match(app, /pending-family-message/);
+    assert.match(app, /pending-family-people/);
+    assert.match(app, /family-gate-message/);
     assert.match(app, /Tap a person below to allow them into your family chat/);
     assert.match(app, /Ask Sangavi to sign in once/);
     assert.match(app, /Invite sent/);
@@ -65,6 +68,10 @@ test('allow people panel is visually prominent', () => {
     assert.match(styles, /\.pending-family-list/);
     assert.match(styles, /background: #fff7d8/);
     assert.match(styles, /border: 2px solid #ffd56a/);
+    assert.match(styles, /\.pending-family-message \{[\s\S]*?max-height: min\(18svh, 120px\);[\s\S]*?overflow-y: auto;/);
+    assert.match(styles, /\.pending-family-people \{[\s\S]*?overflow-y: auto;/);
+    assert.match(styles, /\.family-gate-message \{[\s\S]*?max-height: min\(28svh, 180px\);[\s\S]*?overflow-y: auto;/);
+    assert.match(styles, /overflow-wrap: anywhere/);
   }
 });
 
