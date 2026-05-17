@@ -374,8 +374,7 @@ export async function createFirebaseGroup({ groupName, memberUids = [] }, user) 
     members,
     participants: members,
     createdBy: user.uid,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp()
+    createdAt: serverTimestamp()
   };
   const createPath = 'groups/(auto-id)';
   console.info('[Kids WhatsApp] Creating group', { path: createPath, data: group });
