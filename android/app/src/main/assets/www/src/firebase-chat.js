@@ -480,7 +480,7 @@ export async function deleteFirebaseGroup(groupId, user) {
   await loadApprovedUser(firebase, user.uid);
   const groupSnapshot = await getDoc(groupRef);
   const group = groupSnapshot.exists() ? groupSnapshot.data() : null;
-  if (!group || !isUserInGroup(group, user.uid) || !canManageFirebaseGroup(group, user.uid)) {
+  if (!group || !canManageFirebaseGroup(group, user.uid)) {
     throw new Error('Only group creators, hosts, or admins can delete this group.');
   }
 

@@ -238,7 +238,8 @@ test('group delete validates manager uid and removes messages before the group d
   assert.match(firebase, /getDocs/);
   assert.match(firebase, /writeBatch/);
   assert.match(firebase, /loadApprovedUser\(firebase, user\.uid\)/);
-  assert.match(firebase, /isUserInGroup\(group, user\.uid\)/);
+  assert.match(firebase, /canManageFirebaseGroup\(group, user\.uid\)/);
+  assert.doesNotMatch(firebase, /if \(!group \|\| !isUserInGroup\(group, user\.uid\) \|\| !canManageFirebaseGroup\(group, user\.uid\)\)/);
   assert.match(firebase, /deleteFirebaseGroupMessages/);
   assert.match(firebase, /collection\(firebase\.db, 'groups', groupId, 'messages'\)/);
   assert.match(firebase, /batch\.delete\(message\.ref\)/);
@@ -254,7 +255,10 @@ test('group delete validates manager uid and removes messages before the group d
   assert.match(rules, /data\.hostId == request\.auth\.uid/);
   assert.match(rules, /function groupAdmin\(data\)/);
   assert.match(rules, /data\.adminIds is list/);
+  assert.match(rules, /function groupMessageViewer\(groupId\)/);
+  assert.match(rules, /groupManager\(get\(\/databases\/\$\(database\)\/documents\/groups\/\$\(groupId\)\)\.data\)/);
   assert.match(rules, /validGroupMessageDelete\(groupId\)/);
+  assert.match(rules, /allow read: if groupMessageViewer\(groupId\)/);
   assert.match(rules, /allow delete: if validGroupMessageDelete\(groupId\)/);
 });
 

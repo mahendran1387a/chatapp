@@ -237,6 +237,15 @@ service cloud.firestore {
         && groupHasSignedInUser(get(/databases/$(database)/documents/groups/$(groupId)).data);
     }
 
+    function groupMessageViewer(groupId) {
+      return groupParticipant(groupId)
+        || (
+          approvedUser(request.auth.uid)
+          && exists(/databases/$(database)/documents/groups/$(groupId))
+          && groupManager(get(/databases/$(database)/documents/groups/$(groupId)).data)
+        );
+    }
+
     function validGroupCreate() {
       return approvedUser(request.auth.uid)
         && request.resource.data.keys().hasOnly(['groupName', 'type', 'memberIds', 'members', 'participants', 'createdBy', 'createdAt', 'updatedAt', 'hostId', 'adminIds', 'hostUid', 'adminUids'])
@@ -331,7 +340,7 @@ service cloud.firestore {
       allow delete: if validGroupDelete();
 
       match /messages/{messageId} {
-        allow read: if groupParticipant(groupId);
+        allow read: if groupMessageViewer(groupId);
         allow create: if validGroupMessage(groupId);
         allow update: if groupParticipant(groupId) && validReadReceiptUpdate();
         allow delete: if validGroupMessageDelete(groupId);
