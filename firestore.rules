@@ -198,16 +198,19 @@ service cloud.firestore {
     }
 
     function groupHasSignedInUser(data) {
-      return (data.members is list && data.members.hasAny([request.auth.uid])) ||
+      return (data.memberIds is list && data.memberIds.hasAny([request.auth.uid])) ||
+        (data.members is list && data.members.hasAny([request.auth.uid])) ||
         (data.participants is list && data.participants.hasAny([request.auth.uid]));
     }
 
     function groupHost(data) {
-      return ('hostUid' in data) && data.hostUid == request.auth.uid;
+      return (('hostId' in data) && data.hostId == request.auth.uid) ||
+        (('hostUid' in data) && data.hostUid == request.auth.uid);
     }
 
     function groupAdmin(data) {
-      return ('adminUids' in data) && data.adminUids is list && data.adminUids.hasAny([request.auth.uid]);
+      return (('adminIds' in data) && data.adminIds is list && data.adminIds.hasAny([request.auth.uid])) ||
+        (('adminUids' in data) && data.adminUids is list && data.adminUids.hasAny([request.auth.uid]));
     }
 
     function groupManager(data) {
@@ -217,6 +220,10 @@ service cloud.firestore {
           groupHost(data) ||
           groupAdmin(data)
         );
+    }
+
+    function groupNameEditor(data) {
+      return approvedUser(request.auth.uid) && groupHasSignedInUser(data);
     }
 
     function userIsGroupParticipant() {
@@ -232,38 +239,54 @@ service cloud.firestore {
 
     function validGroupCreate() {
       return approvedUser(request.auth.uid)
-        && request.resource.data.keys().hasOnly(['groupName', 'type', 'members', 'participants', 'createdBy', 'createdAt', 'updatedAt', 'hostUid', 'adminUids'])
+        && request.resource.data.keys().hasOnly(['groupName', 'type', 'memberIds', 'members', 'participants', 'createdBy', 'createdAt', 'updatedAt', 'hostId', 'adminIds', 'hostUid', 'adminUids'])
         && request.resource.data.groupName is string
         && request.resource.data.type == 'group'
+        && request.resource.data.memberIds is list
         && request.resource.data.members is list
         && request.resource.data.participants is list
+        && request.resource.data.memberIds.size() == request.resource.data.members.size()
         && request.resource.data.members.size() >= 2
         && request.resource.data.participants.size() == request.resource.data.members.size()
+        && request.resource.data.memberIds == request.resource.data.members
         && request.resource.data.members == request.resource.data.participants
+        && request.resource.data.memberIds.hasAny([request.auth.uid])
         && request.resource.data.members.hasAny([request.auth.uid])
         && request.resource.data.participants.hasAny([request.auth.uid])
         && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.hostId == request.auth.uid
+        && request.resource.data.adminIds is list
+        && request.resource.data.adminIds.hasAny([request.auth.uid])
         && (!('hostUid' in request.resource.data) || request.resource.data.hostUid == request.auth.uid)
         && (!('adminUids' in request.resource.data) || request.resource.data.adminUids is list);
     }
 
     function validGroupUpdate() {
       return approvedUser(request.auth.uid)
-        && groupManager(resource.data)
-        && request.resource.data.keys().hasOnly(['groupName', 'type', 'members', 'participants', 'createdBy', 'createdAt', 'updatedAt', 'hostUid', 'adminUids'])
+        && groupNameEditor(resource.data)
+        && request.resource.data.keys().hasOnly(['groupName', 'type', 'memberIds', 'members', 'participants', 'createdBy', 'createdAt', 'updatedAt', 'hostId', 'adminIds', 'hostUid', 'adminUids'])
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['groupName', 'updatedAt'])
         && request.resource.data.groupName is string
         && request.resource.data.type == resource.data.type
+        && (!('memberIds' in resource.data) || request.resource.data.memberIds == resource.data.memberIds)
         && request.resource.data.members == resource.data.members
         && request.resource.data.participants == resource.data.participants
         && request.resource.data.createdBy == resource.data.createdBy
         && request.resource.data.createdAt == resource.data.createdAt
+        && (!('hostId' in resource.data) || request.resource.data.hostId == resource.data.hostId)
+        && (!('adminIds' in resource.data) || request.resource.data.adminIds == resource.data.adminIds)
         && (!('hostUid' in resource.data) || request.resource.data.hostUid == resource.data.hostUid)
         && (!('adminUids' in resource.data) || request.resource.data.adminUids == resource.data.adminUids);
     }
 
     function validGroupDelete() {
       return groupManager(resource.data);
+    }
+
+    function validGroupMessageDelete(groupId) {
+      return approvedUser(request.auth.uid)
+        && exists(/databases/$(database)/documents/groups/$(groupId))
+        && groupManager(get(/databases/$(database)/documents/groups/$(groupId)).data);
     }
 
     function validGroupMessage(groupId) {
@@ -311,7 +334,7 @@ service cloud.firestore {
         allow read: if groupParticipant(groupId);
         allow create: if validGroupMessage(groupId);
         allow update: if groupParticipant(groupId) && validReadReceiptUpdate();
-        allow delete: if false;
+        allow delete: if validGroupMessageDelete(groupId);
       }
     }
 

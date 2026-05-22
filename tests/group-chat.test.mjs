@@ -86,10 +86,11 @@ test('group contacts keep creator, host, and admin IDs for management permission
         groupName: 'Family Crew',
         type: 'group',
         members: ['uid-me', 'uid-aisha'],
+        memberIds: ['uid-me', 'uid-aisha'],
         participants: ['uid-me', 'uid-aisha'],
         createdBy: 'uid-me',
-        hostUid: 'uid-me',
-        adminUids: ['uid-aisha']
+        hostId: 'uid-me',
+        adminIds: ['uid-aisha']
       }
     ]
   );
@@ -97,8 +98,9 @@ test('group contacts keep creator, host, and admin IDs for management permission
   const group = filterContacts(updated, { filter: 'groups' })[0];
 
   assert.equal(group.createdBy, 'uid-me');
-  assert.equal(group.hostUid, 'uid-me');
-  assert.deepEqual(group.adminUids, ['uid-aisha']);
+  assert.equal(group.hostId, 'uid-me');
+  assert.deepEqual(group.adminIds, ['uid-aisha']);
+  assert.deepEqual(group.memberIds, ['uid-me', 'uid-aisha']);
 });
 
 test('group chats can be selected and accept outgoing text messages', () => {
@@ -152,10 +154,13 @@ test('app exposes a real Create Group flow from approved signed-in users', () =>
     assert.match(app, /subscribeGroupMessages/);
     assert.match(app, /explainFirebaseError/);
     assert.match(app, /Group delete is blocked by Firestore rules/);
-    assert.match(app, /showFirebaseError\(error, 'deleteGroup'\)/);
-    assert.match(app, /activeContact\.groupId/);
+  assert.match(app, /showFirebaseError\(error, 'deleteGroup'\)/);
+  assert.match(app, /window\.confirm/);
+  assert.match(app, /activeContact\.groupId/);
     assert.match(app, /function canCurrentUserManageGroup\(contact\)/);
+    assert.match(app, /function canCurrentUserEditGroupName\(contact\)/);
     assert.match(app, /canCurrentUserManageGroup\(contact\)/);
+    assert.match(app, /canCurrentUserEditGroupName\(contact\)/);
     assert.match(app, /function isFirestoreGroupContact\(contact\)/);
     assert.match(app, /function getPersistableContacts\(\)/);
     assert.match(app, /previousGroupContacts/);
@@ -176,11 +181,14 @@ test('Firebase group helpers and rules protect group membership and sender ident
   assert.match(firebase, /updateFirebaseGroupName/);
   assert.match(firebase, /deleteFirebaseGroup/);
   assert.match(firebase, /canManageFirebaseGroup/);
-  assert.match(firebase, /hostUid/);
-  assert.match(firebase, /adminUids/);
+  assert.match(firebase, /hostId/);
+  assert.match(firebase, /adminIds/);
   assert.match(firebase, /collection\(firebase\.db, 'groups'\)/);
   assert.match(firebase, /type: 'group'/);
   assert.match(firebase, /participants: members/);
+  assert.match(firebase, /memberIds: members/);
+  assert.match(firebase, /hostId: user\.uid/);
+  assert.match(firebase, /adminIds: \[user\.uid\]/);
   assert.match(firebase, /loadApprovedGroupMembers/);
   assert.match(firebase, /Choose only approved friends for a group/);
   assert.match(firebase, /doc\(firebase\.db, 'users', uid\)/);
@@ -205,16 +213,75 @@ test('Firebase group helpers and rules protect group membership and sender ident
   assert.match(rules, /validGroupUpdate\(\)/);
   assert.match(rules, /validGroupDelete\(\)/);
   assert.match(rules, /groupManager/);
-  assert.match(rules, /hostUid/);
-  assert.match(rules, /adminUids/);
+  assert.match(rules, /hostId/);
+  assert.match(rules, /adminIds/);
   assert.match(rules, /'type'/);
   assert.match(rules, /request\.resource\.data\.type == 'group'/);
   assert.match(rules, /participants/);
+  assert.match(rules, /memberIds/);
   assert.match(rules, /groupHasSignedInUser/);
   assert.match(rules, /participants\.hasAny\(\[request\.auth\.uid\]\)/);
+  assert.match(rules, /memberIds\.hasAny\(\[request\.auth\.uid\]\)/);
   assert.match(rules, /members == request\.resource\.data\.participants/);
+  assert.match(rules, /memberIds == request\.resource\.data\.members/);
   assert.match(rules, /members\.size\(\) >= 2/);
   assert.match(rules, /createdBy == request\.auth\.uid/);
   assert.match(rules, /allow delete: if validGroupDelete\(\)/);
   assert.match(rules, /validGroupMessage\(groupId\)/);
+});
+
+test('group delete validates manager uid and removes messages before the group document', () => {
+  const firebase = readFileSync(new URL('../src/firebase-chat.js', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
+  const rules = readFileSync(new URL('../firestore.rules', import.meta.url), 'utf8');
+
+  assert.match(firebase, /getDocs/);
+  assert.match(firebase, /writeBatch/);
+  assert.match(firebase, /loadApprovedUser\(firebase, user\.uid\)/);
+  assert.match(firebase, /isUserInGroup\(group, user\.uid\)/);
+  assert.match(firebase, /deleteFirebaseGroupMessages/);
+  assert.match(firebase, /collection\(firebase\.db, 'groups', groupId, 'messages'\)/);
+  assert.match(firebase, /batch\.delete\(message\.ref\)/);
+  assert.match(firebase, /await deleteFirebaseGroupMessages\(firebase, groupId\)/);
+  assert.match(firebase, /await deleteDoc\(groupRef\)/);
+  assert.match(firebase, /Only group creators, hosts, or admins can delete this group/);
+
+  assert.match(app, /window\.confirm\('Delete this group\? Group messages will also be removed\.'\)/);
+  assert.match(app, /showToast\('Group deleted'\)/);
+  assert.match(app, /Group delete is blocked by Firestore rules/);
+
+  assert.match(rules, /function groupHost\(data\)/);
+  assert.match(rules, /data\.hostId == request\.auth\.uid/);
+  assert.match(rules, /function groupAdmin\(data\)/);
+  assert.match(rules, /data\.adminIds is list/);
+  assert.match(rules, /validGroupMessageDelete\(groupId\)/);
+  assert.match(rules, /allow delete: if validGroupMessageDelete\(groupId\)/);
+});
+
+test('group name edits require an approved group member and keep membership unchanged', () => {
+  const firebase = readFileSync(new URL('../src/firebase-chat.js', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
+  const rules = readFileSync(new URL('../firestore.rules', import.meta.url), 'utf8');
+
+  assert.match(app, /if \(!requireAuth\(\)\) return/);
+  assert.match(app, /if \(!isCurrentUserApproved\(\)\)/);
+  assert.match(app, /Your account is not approved yet/);
+  assert.match(app, /showToast\('Group name saved'\)/);
+
+  assert.match(firebase, /function loadApprovedUser/);
+  assert.match(firebase, /Your account is not approved yet/);
+  assert.match(firebase, /loadApprovedUser\(firebase, user\.uid\)/);
+  assert.match(firebase, /isUserInGroup\(group, user\.uid\)/);
+  assert.match(firebase, /Only approved group members can edit this group/);
+  assert.match(firebase, /updateDoc\(groupRef,\s*\{\s*groupName: cleanName,\s*updatedAt: serverTimestamp\(\)\s*\}\)/);
+  assert.doesNotMatch(firebase, /members:\s*group\.members/);
+  assert.doesNotMatch(firebase, /participants:\s*group\.participants/);
+
+  assert.match(rules, /function groupNameEditor/);
+  assert.match(rules, /groupHasSignedInUser\(data\)/);
+  assert.match(rules, /groupNameEditor\(resource\.data\)/);
+  assert.match(rules, /request\.resource\.data\.diff\(resource\.data\)\.affectedKeys\(\)\.hasOnly\(\['groupName', 'updatedAt'\]\)/);
+  assert.match(rules, /request\.resource\.data\.members == resource\.data\.members/);
+  assert.match(rules, /request\.resource\.data\.memberIds == resource\.data\.memberIds/);
+  assert.match(rules, /request\.resource\.data\.participants == resource\.data\.participants/);
 });

@@ -442,24 +442,31 @@ function getGroupAvatar(group) {
 }
 
 function normalizeGroupMembers(group) {
-  const members = Array.isArray(group.members)
-    ? group.members
-    : Array.isArray(group.participants)
-      ? group.participants
-      : Array.isArray(group.memberUids)
-        ? group.memberUids
-        : [];
+  const members = Array.isArray(group.memberIds)
+    ? group.memberIds
+    : Array.isArray(group.members)
+      ? group.members
+      : Array.isArray(group.participants)
+        ? group.participants
+        : Array.isArray(group.memberUids)
+          ? group.memberUids
+          : [];
   return [...new Set(members.filter((uid) => typeof uid === 'string' && uid.trim()).map((uid) => uid.trim()))];
 }
 
 function buildGroupContact(group, existingContact = {}) {
   const name = getGroupName(group);
   const memberUids = normalizeGroupMembers(group);
-  const adminUids = Array.isArray(group.adminUids)
-    ? group.adminUids.filter((uid) => typeof uid === 'string' && uid.trim())
-    : Array.isArray(existingContact.adminUids)
-      ? existingContact.adminUids
-      : [];
+  const adminIds = Array.isArray(group.adminIds)
+    ? group.adminIds.filter((uid) => typeof uid === 'string' && uid.trim())
+    : Array.isArray(group.adminUids)
+      ? group.adminUids.filter((uid) => typeof uid === 'string' && uid.trim())
+      : Array.isArray(existingContact.adminIds)
+        ? existingContact.adminIds
+        : Array.isArray(existingContact.adminUids)
+          ? existingContact.adminUids
+          : [];
+  const hostId = group.hostId ?? group.hostUid ?? existingContact.hostId ?? existingContact.hostUid ?? '';
   return {
     ...existingContact,
     id: group.id,
@@ -479,10 +486,13 @@ function buildGroupContact(group, existingContact = {}) {
     group: true,
     type: group.type ?? 'group',
     memberUids,
+    memberIds: memberUids,
     participants: Array.isArray(group.participants) ? group.participants : memberUids,
     createdBy: group.createdBy ?? existingContact.createdBy ?? '',
-    hostUid: group.hostUid ?? existingContact.hostUid ?? '',
-    adminUids,
+    hostId,
+    hostUid: hostId,
+    adminIds,
+    adminUids: adminIds,
     messages: existingContact.messages ?? []
   };
 }

@@ -15,6 +15,7 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
   getFirestore,
   onSnapshot,
   orderBy,
@@ -22,6 +23,7 @@ import {
   serverTimestamp,
   setDoc,
   updateDoc,
+  writeBatch,
   where
 } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
 
@@ -313,10 +315,20 @@ async function loadApprovedGroupMembers(firebase, memberUids) {
   return approvedUids;
 }
 
+async function loadApprovedUser(firebase, uid) {
+  const snapshot = await getDoc(doc(firebase.db, 'users', uid));
+  const data = snapshot.exists() ? snapshot.data() : null;
+  if (data?.approved !== true || data.uid !== uid) {
+    throw new Error('Your account is not approved yet. Ask the app owner to approve you before editing groups.');
+  }
+  return data;
+}
+
 function isUserInGroup(group, uid) {
+  const memberIds = Array.isArray(group?.memberIds) ? group.memberIds : [];
   const members = Array.isArray(group?.members) ? group.members : [];
   const participants = Array.isArray(group?.participants) ? group.participants : [];
-  return members.includes(uid) || participants.includes(uid);
+  return memberIds.includes(uid) || members.includes(uid) || participants.includes(uid);
 }
 
 function normalizeManagerUid(uid) {
@@ -324,8 +336,15 @@ function normalizeManagerUid(uid) {
 }
 
 function getGroupManagerUids(group) {
-  const adminUids = Array.isArray(group?.adminUids) ? group.adminUids : [];
-  return [...new Set([group?.createdBy, group?.hostUid, ...adminUids].map(normalizeManagerUid).filter(Boolean))];
+  const adminIds = Array.isArray(group?.adminIds) ? group.adminIds : [];
+  const legacyAdminUids = Array.isArray(group?.adminUids) ? group.adminUids : [];
+  return [...new Set([
+    group?.createdBy,
+    group?.hostId,
+    group?.hostUid,
+    ...adminIds,
+    ...legacyAdminUids
+  ].map(normalizeManagerUid).filter(Boolean))];
 }
 
 export function canManageFirebaseGroup(group, uid) {
@@ -385,9 +404,12 @@ export async function createFirebaseGroup({ groupName, memberUids = [] }, user) 
   const group = {
     groupName: cleanName,
     type: 'group',
+    memberIds: members,
     members,
     participants: members,
     createdBy: user.uid,
+    hostId: user.uid,
+    adminIds: [user.uid],
     createdAt: serverTimestamp()
   };
   const createPath = 'groups/(auto-id)';
@@ -416,10 +438,11 @@ export async function updateFirebaseGroupName(groupId, groupName, user) {
   if (!cleanName) throw new Error('Give your group a name.');
 
   const groupRef = doc(firebase.db, 'groups', groupId);
+  await loadApprovedUser(firebase, user.uid);
   const groupSnapshot = await getDoc(groupRef);
   const group = groupSnapshot.exists() ? groupSnapshot.data() : null;
-  if (!group || !canManageFirebaseGroup(group, user.uid)) {
-    throw new Error('Only the group creator, host, or admin can edit this group.');
+  if (!group || !isUserInGroup(group, user.uid)) {
+    throw new Error('Only approved group members can edit this group.');
   }
 
   await updateDoc(groupRef, {
@@ -429,6 +452,24 @@ export async function updateFirebaseGroupName(groupId, groupName, user) {
   return { id: groupId, ...group, groupName: cleanName, updatedAt: Date.now() };
 }
 
+async function deleteFirebaseGroupMessages(firebase, groupId) {
+  const messageSnapshot = await getDocs(collection(firebase.db, 'groups', groupId, 'messages'));
+  let batch = writeBatch(firebase.db);
+  let batchSize = 0;
+  for (const message of messageSnapshot.docs) {
+    batch.delete(message.ref);
+    batchSize += 1;
+    if (batchSize === 450) {
+      await batch.commit();
+      batch = writeBatch(firebase.db);
+      batchSize = 0;
+    }
+  }
+  if (batchSize > 0) {
+    await batch.commit();
+  }
+}
+
 export async function deleteFirebaseGroup(groupId, user) {
   const firebase = ensureFirebase();
   if (!firebase) throw new Error('Firebase is not ready yet.');
@@ -436,12 +477,14 @@ export async function deleteFirebaseGroup(groupId, user) {
   if (!groupId) throw new Error('Choose a group first.');
 
   const groupRef = doc(firebase.db, 'groups', groupId);
+  await loadApprovedUser(firebase, user.uid);
   const groupSnapshot = await getDoc(groupRef);
   const group = groupSnapshot.exists() ? groupSnapshot.data() : null;
-  if (!group || !canManageFirebaseGroup(group, user.uid)) {
-    throw new Error('Only the group creator, host, or admin can delete this group.');
+  if (!group || !isUserInGroup(group, user.uid) || !canManageFirebaseGroup(group, user.uid)) {
+    throw new Error('Only group creators, hosts, or admins can delete this group.');
   }
 
+  await deleteFirebaseGroupMessages(firebase, groupId);
   await deleteDoc(groupRef);
   return groupId;
 }

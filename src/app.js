@@ -352,12 +352,41 @@ function isCurrentUserApproved() {
 }
 
 function getGroupManagerIds(contact) {
-  const adminUids = Array.isArray(contact?.adminUids) ? contact.adminUids : [];
-  return [...new Set([contact?.createdBy, contact?.hostUid, ...adminUids].filter((uid) => typeof uid === 'string' && uid.trim()))];
+  const adminIds = Array.isArray(contact?.adminIds) ? contact.adminIds : [];
+  const legacyAdminUids = Array.isArray(contact?.adminUids) ? contact.adminUids : [];
+  return [...new Set([
+    contact?.createdBy,
+    contact?.hostId,
+    contact?.hostUid,
+    ...adminIds,
+    ...legacyAdminUids
+  ].filter((uid) => typeof uid === 'string' && uid.trim()))];
+}
+
+function isCurrentUserGroupMember(contact) {
+  const memberIds = Array.isArray(contact?.memberIds) ? contact.memberIds : [];
+  const memberUids = Array.isArray(contact?.memberUids) ? contact.memberUids : [];
+  const participants = Array.isArray(contact?.participants) ? contact.participants : [];
+  return Boolean(
+    currentAuthUser?.uid &&
+      (memberIds.includes(currentAuthUser.uid) ||
+        memberUids.includes(currentAuthUser.uid) ||
+        participants.includes(currentAuthUser.uid))
+  );
+}
+
+function canCurrentUserEditGroupName(contact) {
+  return Boolean(contact?.groupId && currentAuthUser?.uid && isCurrentUserApproved() && isCurrentUserGroupMember(contact));
 }
 
 function canCurrentUserManageGroup(contact) {
-  return Boolean(contact?.groupId && currentAuthUser?.uid && getGroupManagerIds(contact).includes(currentAuthUser.uid));
+  return Boolean(
+    contact?.groupId &&
+      currentAuthUser?.uid &&
+      isCurrentUserApproved() &&
+      isCurrentUserGroupMember(contact) &&
+      getGroupManagerIds(contact).includes(currentAuthUser.uid)
+  );
 }
 
 function insertEmojiIntoMessage(input, emoji) {
@@ -1483,9 +1512,15 @@ function showToast(text) {
 
 function explainFirebaseError(error, context = '') {
   const message = error?.message ?? '';
+  if (message.includes('not approved')) {
+    return 'Your account is not approved yet. Ask the app owner to approve you before editing groups.';
+  }
   if (error?.code === 'permission-denied' || message.includes('Missing or insufficient permissions')) {
     if (context === 'deleteGroup') {
       return 'Group delete is blocked by Firestore rules. Only the group creator, host, or admin can delete it. Publish the latest Firebase rules if this is your group.';
+    }
+    if (context === 'editGroup') {
+      return 'Group name save is blocked. Only approved group members can edit this group.';
     }
     return 'Firebase rules need publishing, or this account is not approved yet.';
   }
@@ -1524,13 +1559,14 @@ function showContactMenu(contactId, anchor = {}) {
   closeMessageMenu();
   activeContactMenuId = contactId;
   const isGroup = Boolean(contact.groupId);
+  const canEditGroupName = canCurrentUserEditGroupName(contact);
   const canManageGroup = canCurrentUserManageGroup(contact);
   const safeContactId = escapeAttribute(contact.id);
   const contactDetail = isGroup ? getGroupMemberLabel(contact) : getContactEmail(contact) || contact.phone || 'No contact detail saved';
   const verifiedNote = isGroup
-    ? canManageGroup
-      ? 'You can manage this group'
-      : 'Only the group owner can delete it'
+    ? canEditGroupName
+      ? 'You can edit this group name'
+      : 'Only approved group members can edit it'
     : 'Google sign-in keeps names real';
 
   const menu = document.createElement('div');
@@ -1540,7 +1576,7 @@ function showContactMenu(contactId, anchor = {}) {
     <strong>${escapeHtml(contact.name)}</strong>
     <small>${escapeHtml(contactDetail)}</small>
     <small class="verified-contact-note">${verifiedNote}</small>
-    ${isGroup && canManageGroup ? '<button type="button" data-contact-menu-action="edit-group" data-contact-id="' + safeContactId + '">Edit group name</button>' : ''}
+    ${isGroup && canEditGroupName ? '<button type="button" data-contact-menu-action="edit-group" data-contact-id="' + safeContactId + '">Edit group name</button>' : ''}
     ${canManageGroup
       ? '<button type="button" class="danger-row" data-contact-menu-action="delete-group" data-contact-id="' + safeContactId + '">Delete group</button>'
       : '<button type="button" class="danger-row" data-contact-menu-action="delete-contact" data-contact-id="' + safeContactId + '">' + (isGroup ? 'Remove group shortcut' : 'Remove chat shortcut') + '</button>'}
@@ -1941,6 +1977,10 @@ document.addEventListener('click', (event) => {
         showToast('Only the group creator, host, or admin can delete this group.');
         return;
       }
+      if (!window.confirm('Delete this group? Group messages will also be removed.')) {
+        closeContactMenu();
+        return;
+      }
       deleteFirebaseGroup(contact.groupId, currentAuthUser)
         .then(() => {
           firebaseGroups = firebaseGroups.filter((group) => group.id !== contact.groupId);
@@ -2178,9 +2218,19 @@ document.addEventListener('submit', (event) => {
   const editGroupForm = event.target.closest('#editGroupForm');
   if (editGroupForm) {
     event.preventDefault();
+    if (!requireAuth()) return;
+    if (!isCurrentUserApproved()) {
+      showToast('Your account is not approved yet. Ask the app owner to approve you before editing groups.');
+      return;
+    }
     const formData = new FormData(editGroupForm);
     const groupName = String(formData.get('groupName') ?? '');
     const groupId = editGroupForm.dataset.groupId;
+    const contact = getContactById(groupId);
+    if (contact && !canCurrentUserEditGroupName(contact)) {
+      showToast('Only approved group members can edit this group.');
+      return;
+    }
     updateFirebaseGroupName(groupId, groupName, currentAuthUser)
       .then((group) => {
         firebaseGroups = firebaseGroups.map((item) => (item.id === group.id ? { ...item, ...group } : item));
@@ -2189,9 +2239,9 @@ document.addEventListener('submit', (event) => {
         editGroupForm.closest('.action-dialog-backdrop')?.remove();
         saveChatState();
         renderAll();
-        showToast('Group saved');
+        showToast('Group name saved');
       })
-      .catch(showFirebaseError);
+      .catch((error) => showFirebaseError(error, 'editGroup'));
     return;
   }
 
