@@ -511,15 +511,21 @@ export function subscribeUserGroups(currentUid, onGroups, onError) {
     return () => {};
   }
 
+  let memberIdGroups = [];
   let memberGroups = [];
   let participantGroups = [];
+  let memberIdGroupsLoaded = false;
   let memberGroupsLoaded = false;
   let participantGroupsLoaded = false;
   const emitGroups = () => {
-    if (!memberGroupsLoaded || !participantGroupsLoaded) return;
-    onGroups(mergeFirebaseGroups(memberGroups, participantGroups));
+    if (!memberIdGroupsLoaded || !memberGroupsLoaded || !participantGroupsLoaded) return;
+    onGroups(mergeFirebaseGroups(memberIdGroups, memberGroups, participantGroups));
   };
   const groupCollection = collection(firebase.db, 'groups');
+  const memberIdGroupsQuery = query(
+    groupCollection,
+    where('memberIds', 'array-contains', currentUid)
+  );
   const memberGroupsQuery = query(
     groupCollection,
     where('members', 'array-contains', currentUid)
@@ -529,6 +535,20 @@ export function subscribeUserGroups(currentUid, onGroups, onError) {
     where('participants', 'array-contains', currentUid)
   );
 
+  console.info('[Kids WhatsApp] Loading groups for user', { uid: currentUid });
+  const unsubscribeMemberIds = onSnapshot(
+    memberIdGroupsQuery,
+    (snapshot) => {
+      memberIdGroupsLoaded = true;
+      memberIdGroups = mapGroupSnapshot(snapshot);
+      console.info('[Kids WhatsApp] Fetched memberId groups', {
+        uid: currentUid,
+        count: memberIdGroups.length
+      });
+      emitGroups();
+    },
+    (error) => onError?.(error)
+  );
   const unsubscribeMembers = onSnapshot(
     memberGroupsQuery,
     (snapshot) => {
@@ -549,6 +569,7 @@ export function subscribeUserGroups(currentUid, onGroups, onError) {
   );
 
   return () => {
+    unsubscribeMemberIds();
     unsubscribeMembers();
     unsubscribeParticipants();
   };
@@ -670,6 +691,12 @@ export async function approveGroupJoinRequest(request, user) {
   }
 
   const nextMembers = [...new Set([...getExistingGroupMembers(group), request.uid])];
+  console.info('[Kids WhatsApp] Approving group join', {
+    groupId: request.groupId,
+    uid: request.uid,
+    decidedBy: user.uid,
+    memberIds: nextMembers
+  });
   const batch = writeBatch(firebase.db);
   batch.update(groupRef, {
     memberIds: nextMembers,
@@ -684,6 +711,12 @@ export async function approveGroupJoinRequest(request, user) {
     updatedAt: serverTimestamp()
   });
   await batch.commit();
+  console.info('[Kids WhatsApp] Approved group join', {
+    groupId: request.groupId,
+    uid: request.uid,
+    decidedBy: user.uid,
+    memberIds: nextMembers
+  });
   return { ...request, status: 'approved' };
 }
 

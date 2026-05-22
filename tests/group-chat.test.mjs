@@ -198,11 +198,16 @@ test('Firebase group helpers and rules protect group membership and sender ident
   assert.match(firebase, /groupRef\.path/);
   assert.doesNotMatch(firebase, /updateDoc\(groupRef,\s*\{\s*updatedAt/s);
   assert.doesNotMatch(firebase, /where\('type', '==', 'group'\)/);
+  assert.match(firebase, /where\('memberIds', 'array-contains', currentUid\)/);
   assert.match(firebase, /where\('members', 'array-contains', currentUid\)/);
   assert.match(firebase, /where\('participants', 'array-contains', currentUid\)/);
+  assert.match(firebase, /memberIdGroupsLoaded/);
   assert.match(firebase, /memberGroupsLoaded/);
   assert.match(firebase, /participantGroupsLoaded/);
-  assert.match(firebase, /if \(!memberGroupsLoaded \|\| !participantGroupsLoaded\) return/);
+  assert.match(firebase, /if \(!memberIdGroupsLoaded \|\| !memberGroupsLoaded \|\| !participantGroupsLoaded\) return/);
+  assert.match(firebase, /mergeFirebaseGroups\(memberIdGroups, memberGroups, participantGroups\)/);
+  assert.match(firebase, /console\.info\('\[Kids WhatsApp\] Loading groups for user'/);
+  assert.match(firebase, /console\.info\('\[Kids WhatsApp\] Fetched memberId groups'/);
   assert.match(firebase, /data\.type === 'group'/);
   assert.match(firebase, /mergeFirebaseGroups/);
   assert.match(firebase, /isUserInGroup/);
@@ -310,9 +315,12 @@ test('group join requests persist in Firestore and managers can approve or rejec
   assert.match(firebase, /export async function approveGroupJoinRequest/);
   assert.match(firebase, /export async function rejectGroupJoinRequest/);
   assert.match(firebase, /writeBatch\(firebase\.db\)/);
+  assert.match(firebase, /new Set\(\[\.\.\.getExistingGroupMembers\(group\), request\.uid\]\)/);
   assert.match(firebase, /memberIds: nextMembers/);
   assert.match(firebase, /members: nextMembers/);
   assert.match(firebase, /participants: nextMembers/);
+  assert.match(firebase, /console\.info\('\[Kids WhatsApp\] Approving group join'/);
+  assert.match(firebase, /console\.info\('\[Kids WhatsApp\] Approved group join'/);
   assert.match(firebase, /status: 'approved'/);
   assert.match(firebase, /status: 'rejected'/);
 
