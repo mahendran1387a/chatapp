@@ -271,6 +271,10 @@ service cloud.firestore {
     }
 
     function validGroupUpdate() {
+      return validGroupNameUpdate() || validGroupMembershipUpdate();
+    }
+
+    function validGroupNameUpdate() {
       return approvedUser(request.auth.uid)
         && groupNameEditor(resource.data)
         && request.resource.data.keys().hasOnly(['groupName', 'type', 'memberIds', 'members', 'participants', 'createdBy', 'createdAt', 'updatedAt', 'hostId', 'adminIds', 'hostUid', 'adminUids'])
@@ -280,6 +284,29 @@ service cloud.firestore {
         && (!('memberIds' in resource.data) || request.resource.data.memberIds == resource.data.memberIds)
         && request.resource.data.members == resource.data.members
         && request.resource.data.participants == resource.data.participants
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.createdAt == resource.data.createdAt
+        && (!('hostId' in resource.data) || request.resource.data.hostId == resource.data.hostId)
+        && (!('adminIds' in resource.data) || request.resource.data.adminIds == resource.data.adminIds)
+        && (!('hostUid' in resource.data) || request.resource.data.hostUid == resource.data.hostUid)
+        && (!('adminUids' in resource.data) || request.resource.data.adminUids == resource.data.adminUids);
+    }
+
+    function validGroupMembershipUpdate() {
+      return approvedUser(request.auth.uid)
+        && groupManager(resource.data)
+        && request.resource.data.keys().hasOnly(['groupName', 'type', 'memberIds', 'members', 'participants', 'createdBy', 'createdAt', 'updatedAt', 'hostId', 'adminIds', 'hostUid', 'adminUids'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds', 'members', 'participants', 'updatedAt'])
+        && request.resource.data.memberIds is list
+        && request.resource.data.members is list
+        && request.resource.data.participants is list
+        && request.resource.data.memberIds == request.resource.data.members
+        && request.resource.data.members == request.resource.data.participants
+        && (!('memberIds' in resource.data) || request.resource.data.memberIds.hasAll(resource.data.memberIds))
+        && (!('members' in resource.data) || request.resource.data.members.hasAll(resource.data.members))
+        && (!('participants' in resource.data) || request.resource.data.participants.hasAll(resource.data.participants))
+        && request.resource.data.groupName == resource.data.groupName
+        && request.resource.data.type == resource.data.type
         && request.resource.data.createdBy == resource.data.createdBy
         && request.resource.data.createdAt == resource.data.createdAt
         && (!('hostId' in resource.data) || request.resource.data.hostId == resource.data.hostId)
@@ -300,6 +327,64 @@ service cloud.firestore {
 
     function validGroupMessage(groupId) {
       return validSenderIdentity() && groupParticipant(groupId);
+    }
+
+    function joinRequestKeys() {
+      return [
+        'groupId',
+        'groupName',
+        'uid',
+        'email',
+        'displayName',
+        'photoURL',
+        'status',
+        'requestedAt',
+        'updatedAt',
+        'decidedBy',
+        'decidedAt'
+      ];
+    }
+
+    function canReadGroupJoinRequest() {
+      return approvedUser(request.auth.uid)
+        && (
+          resource.data.uid == request.auth.uid ||
+          (
+            exists(/databases/$(database)/documents/groups/$(resource.data.groupId))
+            && groupManager(get(/databases/$(database)/documents/groups/$(resource.data.groupId)).data)
+          )
+        );
+    }
+
+    function validGroupJoinRequestCreate(requestId) {
+      return approvedUser(request.auth.uid)
+        && request.resource.data.keys().hasOnly(joinRequestKeys())
+        && request.resource.data.groupId is string
+        && requestId == request.resource.data.groupId + '_' + request.auth.uid
+        && exists(/databases/$(database)/documents/groups/$(request.resource.data.groupId))
+        && !groupHasSignedInUser(get(/databases/$(database)/documents/groups/$(request.resource.data.groupId)).data)
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.displayName is string
+        && request.resource.data.photoURL is string
+        && request.resource.data.groupName is string
+        && request.resource.data.status == 'pending';
+    }
+
+    function validGroupJoinDecision() {
+      return approvedUser(request.auth.uid)
+        && resource.data.groupId is string
+        && exists(/databases/$(database)/documents/groups/$(resource.data.groupId))
+        && groupManager(get(/databases/$(database)/documents/groups/$(resource.data.groupId)).data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'decidedBy', 'decidedAt', 'updatedAt'])
+        && request.resource.data.groupId == resource.data.groupId
+        && request.resource.data.groupName == resource.data.groupName
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.displayName == resource.data.displayName
+        && request.resource.data.photoURL == resource.data.photoURL
+        && request.resource.data.status in ['approved', 'rejected']
+        && request.resource.data.decidedBy == request.auth.uid;
     }
 
     match /users/{uid} {
@@ -334,7 +419,7 @@ service cloud.firestore {
     }
 
     match /groups/{groupId} {
-      allow read: if userIsGroupParticipant();
+      allow read: if approvedUser(request.auth.uid);
       allow create: if validGroupCreate();
       allow update: if validGroupUpdate();
       allow delete: if validGroupDelete();
@@ -345,6 +430,13 @@ service cloud.firestore {
         allow update: if groupParticipant(groupId) && validReadReceiptUpdate();
         allow delete: if validGroupMessageDelete(groupId);
       }
+    }
+
+    match /groupJoinRequests/{requestId} {
+      allow read: if canReadGroupJoinRequest();
+      allow create: if validGroupJoinRequestCreate(requestId);
+      allow update: if validGroupJoinRequestCreate(requestId) || validGroupJoinDecision();
+      allow delete: if false;
     }
 
     match /{document=**} {

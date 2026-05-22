@@ -352,10 +352,25 @@ export function canManageFirebaseGroup(group, uid) {
   return Boolean(currentUid && getGroupManagerUids(group).includes(currentUid));
 }
 
+function getExistingGroupMembers(group) {
+  const memberIds = Array.isArray(group?.memberIds) ? group.memberIds : [];
+  const members = Array.isArray(group?.members) ? group.members : [];
+  const participants = Array.isArray(group?.participants) ? group.participants : [];
+  return [...new Set([...memberIds, ...members, ...participants].filter((uid) => typeof uid === 'string' && uid.trim()))];
+}
+
+function getGroupJoinRequestId(groupId, uid) {
+  return `${groupId}_${uid}`;
+}
+
 function mapGroupSnapshot(snapshot) {
   return snapshot.docs
     .map((item) => ({ id: item.id, ...item.data() }))
     .filter((data) => data.type === 'group');
+}
+
+function mapJoinRequestSnapshot(snapshot) {
+  return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
 }
 
 function getGroupCreatedTime(group) {
@@ -537,6 +552,161 @@ export function subscribeUserGroups(currentUid, onGroups, onError) {
     unsubscribeMembers();
     unsubscribeParticipants();
   };
+}
+
+export function subscribeDiscoverableGroups(currentUid, onGroups, onError) {
+  const firebase = ensureFirebase();
+  if (!firebase || !currentUid) {
+    onGroups([]);
+    return () => {};
+  }
+
+  return onSnapshot(
+    collection(firebase.db, 'groups'),
+    (snapshot) => onGroups(mapGroupSnapshot(snapshot)),
+    (error) => onError?.(error)
+  );
+}
+
+export function subscribeOwnGroupJoinRequests(currentUid, onRequests, onError) {
+  const firebase = ensureFirebase();
+  if (!firebase || !currentUid) {
+    onRequests([]);
+    return () => {};
+  }
+
+  return onSnapshot(
+    query(collection(firebase.db, 'groupJoinRequests'), where('uid', '==', currentUid)),
+    (snapshot) => onRequests(mapJoinRequestSnapshot(snapshot)),
+    (error) => onError?.(error)
+  );
+}
+
+export function subscribeManagedGroupJoinRequests(groups = [], user, onRequests, onError) {
+  const firebase = ensureFirebase();
+  const managedGroups = groups.filter((group) => canManageFirebaseGroup(group, user?.uid));
+  if (!firebase || !user?.uid || !managedGroups.length) {
+    onRequests([]);
+    return () => {};
+  }
+
+  const requestsByGroup = new Map();
+  const emitRequests = () => {
+    const requests = [...requestsByGroup.values()]
+      .flat()
+      .filter((request) => request.status === 'pending')
+      .sort((first, second) => {
+        const firstTime = first.requestedAt?.toMillis?.() ?? first.requestedAt ?? 0;
+        const secondTime = second.requestedAt?.toMillis?.() ?? second.requestedAt ?? 0;
+        return secondTime - firstTime;
+      });
+    onRequests(requests);
+  };
+
+  const unsubscribers = managedGroups.map((group) =>
+    onSnapshot(
+      query(collection(firebase.db, 'groupJoinRequests'), where('groupId', '==', group.id)),
+      (snapshot) => {
+        requestsByGroup.set(group.id, mapJoinRequestSnapshot(snapshot));
+        emitRequests();
+      },
+      (error) => onError?.(error)
+    )
+  );
+
+  return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
+}
+
+export async function requestGroupJoin(group, user) {
+  const firebase = ensureFirebase();
+  const groupId = typeof group === 'string' ? group : group?.id;
+  if (!firebase) throw new Error('Firebase is not ready yet.');
+  if (!user?.uid) throw new Error('Please sign in again before asking to join a group.');
+  if (!groupId) throw new Error('Choose a group first.');
+
+  await loadApprovedUser(firebase, user.uid);
+  const groupRef = doc(firebase.db, 'groups', groupId);
+  const groupSnapshot = await getDoc(groupRef);
+  const groupData = groupSnapshot.exists() ? { id: groupSnapshot.id, ...groupSnapshot.data() } : null;
+  if (!groupData) throw new Error('This group was not found.');
+  if (isUserInGroup(groupData, user.uid)) throw new Error('You are already in this group.');
+
+  const requestRef = doc(firebase.db, 'groupJoinRequests', getGroupJoinRequestId(groupId, user.uid));
+  const existingRequest = await getDoc(requestRef);
+  const existingData = existingRequest.exists() ? existingRequest.data() : null;
+  if (existingData?.status === 'pending') {
+    throw new Error('You already asked to join. Waiting for host.');
+  }
+
+  const request = {
+    groupId,
+    groupName: groupData.groupName ?? groupData.name ?? 'Family Group',
+    uid: user.uid,
+    email: normalizeEmail(user.email),
+    displayName: user.displayName ?? user.email ?? 'Google user',
+    photoURL: user.photoURL ?? '',
+    status: 'pending',
+    requestedAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+  await setDoc(requestRef, request, { merge: true });
+  return { id: requestRef.id, ...request };
+}
+
+export async function approveGroupJoinRequest(request, user) {
+  const firebase = ensureFirebase();
+  if (!firebase) throw new Error('Firebase is not ready yet.');
+  if (!user?.uid) throw new Error('Please sign in again before approving a group request.');
+  if (!request?.groupId || !request?.uid) throw new Error('Choose a group request first.');
+
+  await loadApprovedUser(firebase, user.uid);
+  await loadApprovedUser(firebase, request.uid);
+  const groupRef = doc(firebase.db, 'groups', request.groupId);
+  const requestRef = doc(firebase.db, 'groupJoinRequests', getGroupJoinRequestId(request.groupId, request.uid));
+  const groupSnapshot = await getDoc(groupRef);
+  const group = groupSnapshot.exists() ? groupSnapshot.data() : null;
+  if (!group || !canManageFirebaseGroup(group, user.uid)) {
+    throw new Error('Only group creators, hosts, or admins can approve join requests.');
+  }
+
+  const nextMembers = [...new Set([...getExistingGroupMembers(group), request.uid])];
+  const batch = writeBatch(firebase.db);
+  batch.update(groupRef, {
+    memberIds: nextMembers,
+    members: nextMembers,
+    participants: nextMembers,
+    updatedAt: serverTimestamp()
+  });
+  batch.update(requestRef, {
+    status: 'approved',
+    decidedBy: user.uid,
+    decidedAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  });
+  await batch.commit();
+  return { ...request, status: 'approved' };
+}
+
+export async function rejectGroupJoinRequest(request, user) {
+  const firebase = ensureFirebase();
+  if (!firebase) throw new Error('Firebase is not ready yet.');
+  if (!user?.uid) throw new Error('Please sign in again before rejecting a group request.');
+  if (!request?.groupId || !request?.uid) throw new Error('Choose a group request first.');
+
+  await loadApprovedUser(firebase, user.uid);
+  const groupSnapshot = await getDoc(doc(firebase.db, 'groups', request.groupId));
+  const group = groupSnapshot.exists() ? groupSnapshot.data() : null;
+  if (!group || !canManageFirebaseGroup(group, user.uid)) {
+    throw new Error('Only group creators, hosts, or admins can reject join requests.');
+  }
+
+  await updateDoc(doc(firebase.db, 'groupJoinRequests', getGroupJoinRequestId(request.groupId, request.uid)), {
+    status: 'rejected',
+    decidedBy: user.uid,
+    decidedAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  });
+  return { ...request, status: 'rejected' };
 }
 
 export function getConversationId(firstUid, secondUid) {

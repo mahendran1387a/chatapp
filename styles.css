@@ -2352,6 +2352,75 @@ img.profile-edit-photo {
   padding: 9px 12px;
 }
 
+.group-join-row {
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+}
+
+.join-status,
+.mini-action-button,
+.pending-request-badge {
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.join-status {
+  min-height: 30px;
+  padding: 0 10px;
+  color: #5f4a00;
+  background: #fff2b7;
+}
+
+.join-status.approved {
+  color: #006c54;
+  background: #d9fff2;
+}
+
+.mini-action-button {
+  min-height: 34px;
+  padding: 0 12px;
+  color: #ffffff;
+  background: linear-gradient(135deg, var(--green-dark), var(--purple));
+}
+
+.pending-request-badge {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  color: #ffffff;
+  background: #ff8a00;
+  box-shadow: 0 4px 10px rgba(255, 138, 0, 0.25);
+}
+
+.group-join-request-menu {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0;
+  padding: 8px;
+  background: #fff8df;
+  border: 1px solid #f3df61;
+  border-radius: 12px;
+}
+
+.group-join-request-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.group-join-request-row span:first-child {
+  min-width: 0;
+}
+
+.join-request-actions {
+  display: flex;
+  gap: 6px;
+}
+
 .friend-search-results .avatar.small {
   width: 40px;
   height: 40px;

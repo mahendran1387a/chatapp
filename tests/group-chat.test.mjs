@@ -294,3 +294,49 @@ test('group name edits require an approved group member or manager and keep memb
   assert.match(rules, /request\.resource\.data\.memberIds == resource\.data\.memberIds/);
   assert.match(rules, /request\.resource\.data\.participants == resource\.data\.participants/);
 });
+
+test('group join requests persist in Firestore and managers can approve or reject in real time', () => {
+  const firebase = readFileSync(new URL('../src/firebase-chat.js', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
+  const rules = readFileSync(new URL('../firestore.rules', import.meta.url), 'utf8');
+
+  assert.match(firebase, /function getGroupJoinRequestId\(groupId, uid\)/);
+  assert.match(firebase, /collection\(firebase\.db, 'groupJoinRequests'\)/);
+  assert.match(firebase, /export async function requestGroupJoin/);
+  assert.match(firebase, /status: 'pending'/);
+  assert.match(firebase, /export function subscribeDiscoverableGroups/);
+  assert.match(firebase, /export function subscribeOwnGroupJoinRequests/);
+  assert.match(firebase, /export function subscribeManagedGroupJoinRequests/);
+  assert.match(firebase, /export async function approveGroupJoinRequest/);
+  assert.match(firebase, /export async function rejectGroupJoinRequest/);
+  assert.match(firebase, /writeBatch\(firebase\.db\)/);
+  assert.match(firebase, /memberIds: nextMembers/);
+  assert.match(firebase, /members: nextMembers/);
+  assert.match(firebase, /participants: nextMembers/);
+  assert.match(firebase, /status: 'approved'/);
+  assert.match(firebase, /status: 'rejected'/);
+
+  assert.match(app, /availableGroups/);
+  assert.match(app, /ownGroupJoinRequests/);
+  assert.match(app, /pendingGroupJoinRequests/);
+  assert.match(app, /data-request-group-join/);
+  assert.match(app, /data-approve-group-join/);
+  assert.match(app, /data-reject-group-join/);
+  assert.match(app, /pending-request-badge/);
+  assert.match(app, /Waiting for host/);
+  assert.match(app, /Group join approved/);
+  assert.match(app, /Group join rejected/);
+  assert.match(app, /restartManagedGroupJoinRequestSubscription/);
+
+  assert.match(rules, /function validGroupMembershipUpdate\(\)/);
+  assert.match(rules, /groupManager\(resource\.data\)/);
+  assert.match(rules, /request\.resource\.data\.memberIds\.hasAll\(resource\.data\.memberIds\)/);
+  assert.match(rules, /match \/groupJoinRequests\/\{requestId\}/);
+  assert.match(rules, /function validGroupJoinRequestCreate\(requestId\)/);
+  assert.match(rules, /function validGroupJoinDecision\(\)/);
+  assert.match(rules, /request\.resource\.data\.status == 'pending'/);
+  assert.match(rules, /request\.resource\.data\.status in \['approved', 'rejected'\]/);
+  assert.match(rules, /allow read: if canReadGroupJoinRequest\(\)/);
+  assert.match(rules, /allow update: if validGroupJoinRequestCreate\(requestId\) \|\| validGroupJoinDecision\(\)/);
+  assert.match(rules, /allow read: if approvedUser\(request\.auth\.uid\)/);
+});

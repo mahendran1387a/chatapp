@@ -18,6 +18,7 @@ import {
   updateMessage
 } from './chat-store.js';
 import {
+  approveGroupJoinRequest,
   approveFamilyMember,
   createFirebaseGroup,
   deleteFirebaseGroup,
@@ -33,11 +34,16 @@ import {
   startAuthListener,
   subscribeAuthenticatedUsers,
   subscribeCurrentUserProfile,
+  subscribeDiscoverableGroups,
   subscribeFamilyInvites,
+  subscribeManagedGroupJoinRequests,
+  subscribeOwnGroupJoinRequests,
   subscribeGroupMessages,
   subscribePendingFamilyUsers,
   subscribeConversationMessages,
   subscribeUserGroups,
+  rejectGroupJoinRequest,
+  requestGroupJoin,
   updateFirebaseGroupName
 } from './firebase-chat.js';
 
@@ -198,6 +204,9 @@ let approvedUsersLoaded = false;
 let userGroupsLoaded = false;
 let authenticatedUsers = [];
 let firebaseGroups = [];
+let availableGroups = [];
+let ownGroupJoinRequests = [];
+let pendingGroupJoinRequests = [];
 let pendingFamilyUsers = [];
 let pendingFamilyInvites = [];
 let currentUserProfile = null;
@@ -207,6 +216,9 @@ let unsubscribePendingFamilyUsers = () => {};
 let unsubscribeFamilyInvites = () => {};
 let unsubscribeConversation = () => {};
 let unsubscribeGroups = () => {};
+let unsubscribeAvailableGroups = () => {};
+let unsubscribeOwnGroupJoinRequests = () => {};
+let unsubscribeManagedGroupJoinRequests = () => {};
 let subscribedConversationContactId = '';
 let familyListsStarted = false;
 let settingsSearchQuery = '';
@@ -379,6 +391,13 @@ function isCurrentUserGroupManager(contact) {
   return Boolean(currentAuthUser?.uid && getGroupManagerIds(contact).includes(currentAuthUser.uid));
 }
 
+function groupIncludesCurrentUser(group) {
+  const memberIds = Array.isArray(group?.memberIds) ? group.memberIds : [];
+  const members = Array.isArray(group?.members) ? group.members : [];
+  const participants = Array.isArray(group?.participants) ? group.participants : [];
+  return Boolean(currentAuthUser?.uid && [...memberIds, ...members, ...participants].includes(currentAuthUser.uid));
+}
+
 function canCurrentUserEditGroupName(contact) {
   return Boolean(
     contact?.groupId &&
@@ -395,6 +414,18 @@ function canCurrentUserManageGroup(contact) {
       isCurrentUserApproved() &&
       isCurrentUserGroupManager(contact)
   );
+}
+
+function getOwnJoinRequestForGroup(groupId) {
+  return ownGroupJoinRequests.find((request) => request.groupId === groupId);
+}
+
+function getPendingGroupJoinRequests(groupId) {
+  return pendingGroupJoinRequests.filter((request) => request.groupId === groupId && request.status === 'pending');
+}
+
+function getPendingGroupJoinRequestCount(groupId) {
+  return getPendingGroupJoinRequests(groupId).length;
 }
 
 function insertEmojiIntoMessage(input, emoji) {
@@ -771,6 +802,40 @@ function renderFriendSearchRows(emptyMessage) {
   `;
 }
 
+function getJoinableGroups() {
+  return availableGroups
+    .filter((group) => group?.id && group.type === 'group' && !groupIncludesCurrentUser(group))
+    .sort((first, second) => (first.groupName ?? '').localeCompare(second.groupName ?? ''));
+}
+
+function renderJoinableGroupRows() {
+  const groups = getJoinableGroups();
+  if (!groups.length) return '';
+  return `
+    <h3 class="user-list-heading">Groups you can join</h3>
+    ${groups.map((group) => {
+      const request = getOwnJoinRequestForGroup(group.id);
+      const status = request?.status ?? '';
+      const buttonLabel = status === 'rejected' ? 'Ask again' : 'Request to join';
+      const statusLabel = status === 'pending'
+        ? '<span class="join-status waiting">Waiting for host</span>'
+        : status === 'approved'
+          ? '<span class="join-status approved">Joining now...</span>'
+          : `<button class="mini-action-button" type="button" data-request-group-join="${escapeAttribute(group.id)}">${buttonLabel}</button>`;
+      return `
+        <div class="auth-user-row group-join-row">
+          ${renderAvatar(initials(group.groupName ?? 'Group'), '#7b4dff', 'small')}
+          <span class="user-card-copy">
+            <strong>${escapeHtml(group.groupName ?? 'Family Group')}</strong>
+            <small class="user-card-label">${escapeHtml((group.memberIds ?? group.members ?? group.participants ?? []).length)} members</small>
+          </span>
+          ${statusLabel}
+        </div>
+      `;
+    }).join('')}
+  `;
+}
+
 function renderPendingFamilyRows() {
   if (!isCurrentUserOwner()) return '';
   const pendingUserEmails = new Set(pendingFamilyUsers.map((user) => String(user.email ?? '').trim().toLowerCase()));
@@ -883,6 +948,7 @@ function renderFriendSearchForm(autoListMessage) {
       </label>
     </div>
     <div class="auth-user-list friend-search-results">
+      ${renderJoinableGroupRows()}
       ${renderFriendSearchRows(autoListMessage)}
     </div>
     ${renderCreateGroupButton()}
@@ -1158,6 +1224,7 @@ function renderChats() {
                 <span class="chat-name-wrap">
                   <span class="chat-name">${contact.name}</span>
                   ${renderContactStatus(contact, 'compact')}
+                  ${contact.groupId && getPendingGroupJoinRequestCount(contact.groupId) ? `<span class="pending-request-badge">${getPendingGroupJoinRequestCount(contact.groupId)}</span>` : ''}
                 </span>
                 <span class="chat-time">${contact.time}</span>
               </span>
@@ -1560,6 +1627,28 @@ function getMessageById(contactId, messageId) {
   return getContactById(contactId)?.messages.find((message) => message.id === messageId);
 }
 
+function renderGroupJoinRequestMenu(contact) {
+  const requests = getPendingGroupJoinRequests(contact.groupId);
+  if (!requests.length) return '';
+  return `
+    <div class="group-join-request-menu">
+      <small class="verified-contact-note">${requests.length} pending join request${requests.length === 1 ? '' : 's'}</small>
+      ${requests.map((request) => `
+        <div class="group-join-request-row">
+          <span>
+            <strong>${escapeHtml(request.displayName || request.email || 'Google user')}</strong>
+            <small>${escapeHtml(request.email || 'Waiting for host')}</small>
+          </span>
+          <span class="join-request-actions">
+            <button type="button" data-approve-group-join="${escapeAttribute(request.id)}">Approve</button>
+            <button type="button" class="danger-row" data-reject-group-join="${escapeAttribute(request.id)}">Reject</button>
+          </span>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
 function showContactMenu(contactId, anchor = {}) {
   const contact = getContactById(contactId);
   if (!contact) return;
@@ -1584,6 +1673,7 @@ function showContactMenu(contactId, anchor = {}) {
     <strong>${escapeHtml(contact.name)}</strong>
     <small>${escapeHtml(contactDetail)}</small>
     <small class="verified-contact-note">${verifiedNote}</small>
+    ${isGroup && canManageGroup ? renderGroupJoinRequestMenu(contact) : ''}
     ${isGroup && canEditGroupName ? '<button type="button" data-contact-menu-action="edit-group" data-contact-id="' + safeContactId + '">Edit group name</button>' : ''}
     ${canManageGroup
       ? '<button type="button" class="danger-row" data-contact-menu-action="delete-group" data-contact-id="' + safeContactId + '">Delete group</button>'
@@ -1949,6 +2039,51 @@ document.addEventListener('click', (event) => {
   if (approveFamilyButton) {
     approveFamilyMember(approveFamilyButton.dataset.approveFamilyUser, currentAuthUser)
       .then(() => showToast('Family member approved'))
+      .catch(showFirebaseError);
+    return;
+  }
+
+  const requestGroupJoinButton = event.target.closest('[data-request-group-join]');
+  if (requestGroupJoinButton) {
+    const group = availableGroups.find((item) => item.id === requestGroupJoinButton.dataset.requestGroupJoin);
+    if (!group) {
+      showToast('Group was not found. Check your internet and try again.');
+      return;
+    }
+    requestGroupJoin(group, currentAuthUser)
+      .then(() => showToast('Join request sent. Waiting for host.'))
+      .catch(showFirebaseError);
+    return;
+  }
+
+  const approveGroupJoinButton = event.target.closest('[data-approve-group-join]');
+  if (approveGroupJoinButton) {
+    const request = pendingGroupJoinRequests.find((item) => item.id === approveGroupJoinButton.dataset.approveGroupJoin);
+    if (!request) {
+      showToast('Join request was not found.');
+      return;
+    }
+    approveGroupJoinRequest(request, currentAuthUser)
+      .then(() => {
+        closeContactMenu();
+        showToast('Group join approved');
+      })
+      .catch(showFirebaseError);
+    return;
+  }
+
+  const rejectGroupJoinButton = event.target.closest('[data-reject-group-join]');
+  if (rejectGroupJoinButton) {
+    const request = pendingGroupJoinRequests.find((item) => item.id === rejectGroupJoinButton.dataset.rejectGroupJoin);
+    if (!request) {
+      showToast('Join request was not found.');
+      return;
+    }
+    rejectGroupJoinRequest(request, currentAuthUser)
+      .then(() => {
+        closeContactMenu();
+        showToast('Group join rejected');
+      })
       .catch(showFirebaseError);
     return;
   }
@@ -2343,6 +2478,24 @@ function syncApprovedFamilyContacts(user) {
   renderAll();
 }
 
+function restartManagedGroupJoinRequestSubscription(user = currentAuthUser) {
+  unsubscribeManagedGroupJoinRequests();
+  pendingGroupJoinRequests = [];
+  if (!user?.uid || !firebaseGroups.length) {
+    renderAll();
+    return;
+  }
+  unsubscribeManagedGroupJoinRequests = subscribeManagedGroupJoinRequests(
+    firebaseGroups,
+    user,
+    (requests) => {
+      pendingGroupJoinRequests = requests;
+      renderAll();
+    },
+    (error) => showFirebaseError(error)
+  );
+}
+
 function startApprovedFamilyLists(user) {
   if (familyListsStarted) return;
   familyListsStarted = true;
@@ -2366,12 +2519,29 @@ function startApprovedFamilyLists(user) {
       userGroupsLoaded = true;
       firebaseGroups = groups;
       syncApprovedFamilyContacts(user);
+      restartManagedGroupJoinRequestSubscription(user);
     },
     (error) => {
       chatsLoading = false;
       showFirebaseError(error);
       renderAll();
     }
+  );
+  unsubscribeAvailableGroups = subscribeDiscoverableGroups(
+    user.uid,
+    (groups) => {
+      availableGroups = groups;
+      renderAll();
+    },
+    showFirebaseError
+  );
+  unsubscribeOwnGroupJoinRequests = subscribeOwnGroupJoinRequests(
+    user.uid,
+    (requests) => {
+      ownGroupJoinRequests = requests;
+      renderAll();
+    },
+    showFirebaseError
   );
   if (isFamilyOwnerEmail(user.email)) {
     unsubscribePendingFamilyUsers = subscribePendingFamilyUsers(
@@ -2414,12 +2584,18 @@ function startFirebaseAuth() {
       unsubscribeFamilyInvites();
       unsubscribeConversation();
       unsubscribeGroups();
+      unsubscribeAvailableGroups();
+      unsubscribeOwnGroupJoinRequests();
+      unsubscribeManagedGroupJoinRequests();
       familyListsStarted = false;
       resetApprovedChatLoadingState();
       subscribedConversationContactId = '';
       if (!user) {
         authenticatedUsers = [];
         firebaseGroups = [];
+        availableGroups = [];
+        ownGroupJoinRequests = [];
+        pendingGroupJoinRequests = [];
         pendingFamilyUsers = [];
         pendingFamilyInvites = [];
         currentUserProfile = null;
@@ -2447,6 +2623,9 @@ function startFirebaseAuth() {
           } else {
             authenticatedUsers = [];
             firebaseGroups = [];
+            availableGroups = [];
+            ownGroupJoinRequests = [];
+            pendingGroupJoinRequests = [];
             pendingFamilyUsers = [];
             pendingFamilyInvites = [];
             state = reconcileAuthenticatedContacts(state, [], user.uid, []);
