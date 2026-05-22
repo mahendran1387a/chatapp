@@ -486,8 +486,23 @@ img.signed-in-avatar {
   padding-bottom: 30px;
 }
 
+.friends-scroll {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  padding-bottom: 0;
+  overflow: hidden;
+}
+
 .friends-invites-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100%;
+  min-height: 0;
   padding: 4px 18px 28px;
+  overflow: hidden;
 }
 
 .tool-scroll h2 {
@@ -2212,6 +2227,14 @@ img.profile-edit-photo {
   margin: 16px auto 0;
 }
 
+.invite-friend-intro,
+.pending-family-list,
+.family-invite-form,
+#friendSearchForm,
+.create-group-action {
+  flex: 0 0 auto;
+}
+
 .pending-family-list {
   gap: 10px;
   padding: 14px;
@@ -2280,6 +2303,34 @@ img.profile-edit-photo {
   gap: 10px;
   width: min(575px, 100%);
   margin: 8px auto 0;
+}
+
+.friend-search-results {
+  flex: 1 1 auto;
+  align-content: start;
+  grid-auto-rows: min-content;
+  min-height: 120px;
+  max-height: min(34svh, 330px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
+}
+
+.friend-search-results .user-list-heading {
+  margin: 0 0 2px;
+}
+
+.friend-search-results .auth-user-row {
+  align-self: start;
+  min-height: 64px;
+  padding: 9px 12px;
+}
+
+.friend-search-results .avatar.small {
+  width: 40px;
+  height: 40px;
 }
 
 .invite-friend-intro {
@@ -2505,6 +2556,21 @@ img.profile-edit-photo {
 
   .pending-family-people {
     max-height: min(30svh, 220px);
+  }
+
+  .friends-invites-shell {
+    gap: 8px;
+    padding: 2px 12px 16px;
+  }
+
+  .friend-search-results {
+    min-height: 96px;
+    max-height: min(30svh, 240px);
+  }
+
+  .friend-search-results .auth-user-row {
+    min-height: 60px;
+    padding: 8px 10px;
   }
 
   .friend-search-form {

@@ -75,6 +75,23 @@ test('allow people panel is visually prominent', () => {
   }
 });
 
+test('friends and invites page keeps approved friends in a compact scroll area', () => {
+  for (const relativePath of [
+    '../styles.css',
+    '../android/app/src/main/assets/www/styles.css'
+  ]) {
+    const styles = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
+
+    assert.match(styles, /\.friends-scroll \{[\s\S]*?display: flex;[\s\S]*?min-height: 0;[\s\S]*?overflow: hidden;/);
+    assert.match(styles, /\.friends-scroll \{[\s\S]*?height: 100%;[\s\S]*?padding-bottom: 0;/);
+    assert.match(styles, /\.friends-invites-shell \{[\s\S]*?display: flex;[\s\S]*?min-height: 0;[\s\S]*?overflow: hidden;/);
+    assert.match(styles, /\.invite-friend-intro,[\s\S]*?\.family-invite-form,[\s\S]*?#friendSearchForm,[\s\S]*?\.create-group-action \{[\s\S]*?flex: 0 0 auto;/);
+    assert.match(styles, /\.friend-search-results \{[\s\S]*?flex: 1 1 auto;[\s\S]*?grid-auto-rows: min-content;[\s\S]*?min-height: 120px;[\s\S]*?max-height: min\(34svh, 330px\);[\s\S]*?overflow-y: auto;[\s\S]*?overflow-x: hidden;/);
+    assert.match(styles, /\.friend-search-results \.auth-user-row \{[\s\S]*?align-self: start;[\s\S]*?min-height: 64px;[\s\S]*?padding: 9px 12px;/);
+    assert.match(styles, /@media \(max-width: 560px\) \{[\s\S]*?\.friend-search-results \{[\s\S]*?max-height: min\(30svh, 240px\);/);
+  }
+});
+
 test('Firestore rules enforce closed family access and owner-only invites', () => {
   const rules = readFileSync(new URL('../firestore.rules', import.meta.url), 'utf8');
 
