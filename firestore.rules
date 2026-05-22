@@ -223,7 +223,7 @@ service cloud.firestore {
     }
 
     function groupNameEditor(data) {
-      return approvedUser(request.auth.uid) && groupHasSignedInUser(data);
+      return approvedUser(request.auth.uid) && (groupManager(data) || groupHasSignedInUser(data));
     }
 
     function userIsGroupParticipant() {

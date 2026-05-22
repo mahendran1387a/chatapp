@@ -375,8 +375,17 @@ function isCurrentUserGroupMember(contact) {
   );
 }
 
+function isCurrentUserGroupManager(contact) {
+  return Boolean(currentAuthUser?.uid && getGroupManagerIds(contact).includes(currentAuthUser.uid));
+}
+
 function canCurrentUserEditGroupName(contact) {
-  return Boolean(contact?.groupId && currentAuthUser?.uid && isCurrentUserApproved() && isCurrentUserGroupMember(contact));
+  return Boolean(
+    contact?.groupId &&
+      currentAuthUser?.uid &&
+      isCurrentUserApproved() &&
+      (isCurrentUserGroupMember(contact) || isCurrentUserGroupManager(contact))
+  );
 }
 
 function canCurrentUserManageGroup(contact) {
@@ -384,8 +393,7 @@ function canCurrentUserManageGroup(contact) {
     contact?.groupId &&
       currentAuthUser?.uid &&
       isCurrentUserApproved() &&
-      isCurrentUserGroupMember(contact) &&
-      getGroupManagerIds(contact).includes(currentAuthUser.uid)
+      isCurrentUserGroupManager(contact)
   );
 }
 
@@ -1520,7 +1528,7 @@ function explainFirebaseError(error, context = '') {
       return 'Group delete is blocked by Firestore rules. Only the group creator, host, or admin can delete it. Publish the latest Firebase rules if this is your group.';
     }
     if (context === 'editGroup') {
-      return 'Group name save is blocked. Only approved group members can edit this group.';
+      return 'Group name save is blocked. Only approved group creators, hosts, admins, or members can edit it. Publish the latest Firebase rules if this is your group.';
     }
     return 'Firebase rules need publishing, or this account is not approved yet.';
   }
@@ -2228,7 +2236,7 @@ document.addEventListener('submit', (event) => {
     const groupId = editGroupForm.dataset.groupId;
     const contact = getContactById(groupId);
     if (contact && !canCurrentUserEditGroupName(contact)) {
-      showToast('Only approved group members can edit this group.');
+      showToast('Only approved group creators, hosts, admins, or members can edit this group.');
       return;
     }
     updateFirebaseGroupName(groupId, groupName, currentAuthUser)

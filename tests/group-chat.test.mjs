@@ -262,7 +262,7 @@ test('group delete validates manager uid and removes messages before the group d
   assert.match(rules, /allow delete: if validGroupMessageDelete\(groupId\)/);
 });
 
-test('group name edits require an approved group member and keep membership unchanged', () => {
+test('group name edits require an approved group member or manager and keep membership unchanged', () => {
   const firebase = readFileSync(new URL('../src/firebase-chat.js', import.meta.url), 'utf8');
   const app = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
   const rules = readFileSync(new URL('../firestore.rules', import.meta.url), 'utf8');
@@ -276,12 +276,17 @@ test('group name edits require an approved group member and keep membership unch
   assert.match(firebase, /Your account is not approved yet/);
   assert.match(firebase, /loadApprovedUser\(firebase, user\.uid\)/);
   assert.match(firebase, /isUserInGroup\(group, user\.uid\)/);
-  assert.match(firebase, /Only approved group members can edit this group/);
+  assert.match(firebase, /canManageFirebaseGroup\(group, user\.uid\)/);
+  assert.match(firebase, /!isUserInGroup\(group, user\.uid\) && !canManageFirebaseGroup\(group, user\.uid\)/);
+  assert.match(firebase, /Only approved group creators, hosts, admins, or members can edit this group/);
   assert.match(firebase, /updateDoc\(groupRef,\s*\{\s*groupName: cleanName,\s*updatedAt: serverTimestamp\(\)\s*\}\)/);
   assert.doesNotMatch(firebase, /members:\s*group\.members/);
   assert.doesNotMatch(firebase, /participants:\s*group\.participants/);
 
+  assert.match(app, /isCurrentUserGroupManager\(contact\)/);
+  assert.match(app, /isCurrentUserGroupMember\(contact\) \|\| isCurrentUserGroupManager\(contact\)/);
   assert.match(rules, /function groupNameEditor/);
+  assert.match(rules, /groupManager\(data\) \|\| groupHasSignedInUser\(data\)/);
   assert.match(rules, /groupHasSignedInUser\(data\)/);
   assert.match(rules, /groupNameEditor\(resource\.data\)/);
   assert.match(rules, /request\.resource\.data\.diff\(resource\.data\)\.affectedKeys\(\)\.hasOnly\(\['groupName', 'updatedAt'\]\)/);
