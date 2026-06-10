@@ -303,6 +303,9 @@ test('group name edits require an approved group member or manager and keep memb
   const firebase = readFileSync(new URL('../src/firebase-chat.js', import.meta.url), 'utf8');
   const app = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
   const rules = readFileSync(new URL('../firestore.rules', import.meta.url), 'utf8');
+  const nameUpdateRule = rules.match(
+    /function validGroupNameUpdate\(\) \{[\s\S]*?\n    \}\n\n    function validGroupMembershipUpdate/
+  )?.[0] ?? '';
 
   assert.match(app, /if \(!requireAuth\(\)\) return/);
   assert.match(app, /if \(!isCurrentUserApproved\(\)\)/);
@@ -314,9 +317,23 @@ test('group name edits require an approved group member or manager and keep memb
   assert.match(firebase, /loadApprovedUser\(firebase, user\.uid\)/);
   assert.match(firebase, /isUserInGroup\(group, user\.uid\)/);
   assert.match(firebase, /canManageFirebaseGroup\(group, user\.uid\)/);
-  assert.match(firebase, /!isUserInGroup\(group, user\.uid\) && !canManageFirebaseGroup\(group, user\.uid\)/);
+  assert.match(firebase, /const permissionGranted = isMember \|\| isManager/);
+  assert.match(firebase, /if \(!permissionGranted\)/);
   assert.match(firebase, /Only approved group creators, hosts, admins, or members can edit this group/);
   assert.match(firebase, /updateDoc\(groupRef,\s*\{\s*groupName: cleanName,\s*updatedAt: serverTimestamp\(\)\s*\}\)/);
+  assert.match(firebase, /console\.info\('\[Kids WhatsApp\] Group name permission check'/);
+  assert.match(firebase, /path: groupRef\.path/);
+  assert.match(firebase, /currentUserUid: user\.uid/);
+  assert.match(firebase, /selectedGroupId: groupId/);
+  assert.match(firebase, /creatorId: group\?\.creatorId/);
+  assert.match(firebase, /hostId: group\?\.hostId/);
+  assert.match(firebase, /adminIds: group\?\.adminIds/);
+  assert.match(firebase, /memberIds: group\?\.memberIds/);
+  assert.match(firebase, /members: group\?\.members/);
+  assert.match(firebase, /permissionGranted/);
+  assert.match(firebase, /console\.info\('\[Kids WhatsApp\] Saving group name'/);
+  assert.match(firebase, /console\.info\('\[Kids WhatsApp\] Group name saved'/);
+  assert.match(firebase, /Firestore rejected group name update even though this account is an approved group editor/);
   assert.doesNotMatch(firebase, /members:\s*group\.members/);
   assert.doesNotMatch(firebase, /participants:\s*group\.participants/);
 
@@ -324,12 +341,15 @@ test('group name edits require an approved group member or manager and keep memb
   assert.match(app, /isCurrentUserGroupMember\(contact\) \|\| isCurrentUserGroupManager\(contact\)/);
   assert.match(rules, /function groupNameEditor/);
   assert.match(rules, /groupManager\(data\) \|\| groupHasSignedInUser\(data\)/);
-  assert.match(rules, /groupHasSignedInUser\(data\)/);
+  assert.match(rules, /\('memberIds' in data\).*data\.memberIds\.hasAny\(\[request\.auth\.uid\]\)/);
+  assert.match(rules, /\('members' in data\).*data\.members\.hasAny\(\[request\.auth\.uid\]\)/);
+  assert.match(rules, /\('participants' in data\).*data\.participants\.hasAny\(\[request\.auth\.uid\]\)/);
   assert.match(rules, /groupNameEditor\(resource\.data\)/);
   assert.match(rules, /request\.resource\.data\.diff\(resource\.data\)\.affectedKeys\(\)\.hasOnly\(\['groupName', 'updatedAt'\]\)/);
-  assert.match(rules, /request\.resource\.data\.members == resource\.data\.members/);
-  assert.match(rules, /request\.resource\.data\.memberIds == resource\.data\.memberIds/);
-  assert.match(rules, /request\.resource\.data\.participants == resource\.data\.participants/);
+  assert.doesNotMatch(nameUpdateRule, /request\.resource\.data\.keys\(\)\.hasOnly/);
+  assert.doesNotMatch(nameUpdateRule, /request\.resource\.data\.members == resource\.data\.members/);
+  assert.doesNotMatch(nameUpdateRule, /request\.resource\.data\.memberIds == resource\.data\.memberIds/);
+  assert.doesNotMatch(nameUpdateRule, /request\.resource\.data\.participants == resource\.data\.participants/);
 });
 
 test('group join requests persist in Firestore and managers can approve or reject in real time', () => {

@@ -198,9 +198,9 @@ service cloud.firestore {
     }
 
     function groupHasSignedInUser(data) {
-      return (data.memberIds is list && data.memberIds.hasAny([request.auth.uid])) ||
-        (data.members is list && data.members.hasAny([request.auth.uid])) ||
-        (data.participants is list && data.participants.hasAny([request.auth.uid]));
+      return (('memberIds' in data) && data.memberIds is list && data.memberIds.hasAny([request.auth.uid])) ||
+        (('members' in data) && data.members is list && data.members.hasAny([request.auth.uid])) ||
+        (('participants' in data) && data.participants is list && data.participants.hasAny([request.auth.uid]));
     }
 
     function groupCreator(data) {
@@ -287,19 +287,8 @@ service cloud.firestore {
     function validGroupNameUpdate() {
       return approvedUser(request.auth.uid)
         && groupNameEditor(resource.data)
-        && request.resource.data.keys().hasOnly(['groupName', 'type', 'memberIds', 'members', 'participants', 'createdBy', 'createdAt', 'updatedAt', 'hostId', 'adminIds', 'hostUid', 'adminUids'])
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['groupName', 'updatedAt'])
-        && request.resource.data.groupName is string
-        && request.resource.data.type == resource.data.type
-        && (!('memberIds' in resource.data) || request.resource.data.memberIds == resource.data.memberIds)
-        && request.resource.data.members == resource.data.members
-        && request.resource.data.participants == resource.data.participants
-        && request.resource.data.createdBy == resource.data.createdBy
-        && request.resource.data.createdAt == resource.data.createdAt
-        && (!('hostId' in resource.data) || request.resource.data.hostId == resource.data.hostId)
-        && (!('adminIds' in resource.data) || request.resource.data.adminIds == resource.data.adminIds)
-        && (!('hostUid' in resource.data) || request.resource.data.hostUid == resource.data.hostUid)
-        && (!('adminUids' in resource.data) || request.resource.data.adminUids == resource.data.adminUids);
+        && request.resource.data.groupName is string;
     }
 
     function validGroupMembershipUpdate() {

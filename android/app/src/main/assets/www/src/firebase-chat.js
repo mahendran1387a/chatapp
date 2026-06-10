@@ -495,16 +495,80 @@ export async function updateFirebaseGroupName(groupId, groupName, user) {
   if (!cleanName) throw new Error('Give your group a name.');
 
   const groupRef = doc(firebase.db, 'groups', groupId);
-  await loadApprovedUser(firebase, user.uid);
+  const approvedProfile = await loadApprovedUser(firebase, user.uid);
   const groupSnapshot = await getDoc(groupRef);
-  const group = groupSnapshot.exists() ? groupSnapshot.data() : null;
-  if (!group || (!isUserInGroup(group, user.uid) && !canManageFirebaseGroup(group, user.uid))) {
-    throw new Error('Only approved group creators, hosts, admins, or members can edit this group.');
+  const group = groupSnapshot.exists() ? { id: groupSnapshot.id, ...groupSnapshot.data() } : null;
+  const isMember = Boolean(group && isUserInGroup(group, user.uid));
+  const isManager = Boolean(group && canManageFirebaseGroup(group, user.uid));
+  const permissionGranted = isMember || isManager;
+  console.info('[Kids WhatsApp] Group name permission check', {
+    path: groupRef.path,
+    selectedGroupId: groupId,
+    currentUserUid: user.uid,
+    approved: approvedProfile.approved === true,
+    role: approvedProfile.role ?? '',
+    createdBy: group?.createdBy,
+    creatorId: group?.creatorId,
+    creatorUid: group?.creatorUid,
+    ownerId: group?.ownerId,
+    ownerUid: group?.ownerUid,
+    hostId: group?.hostId,
+    hostUid: group?.hostUid,
+    adminId: group?.adminId,
+    adminUid: group?.adminUid,
+    adminIds: group?.adminIds,
+    adminUids: group?.adminUids,
+    memberIds: group?.memberIds,
+    members: group?.members,
+    participants: group?.participants,
+    isMember,
+    isManager,
+    permissionGranted
+  });
+  if (!group) {
+    throw new Error(`Group ${groupId} was not found.`);
+  }
+  if (!permissionGranted) {
+    const owners = getGroupOwnerSummary(group);
+    const ownerUid = owners.creatorUid || owners.hostUid || owners.adminUids[0] || 'not recorded';
+    throw new Error(
+      `Only approved group creators, hosts, admins, or members can edit this group. Group owner UID: ${ownerUid}.`
+    );
   }
 
-  await updateDoc(groupRef, {
-    groupName: cleanName,
-    updatedAt: serverTimestamp()
+  try {
+    console.info('[Kids WhatsApp] Saving group name', {
+      path: groupRef.path,
+      selectedGroupId: groupId,
+      currentUserUid: user.uid,
+      groupName: cleanName
+    });
+    await updateDoc(groupRef, {
+      groupName: cleanName,
+      updatedAt: serverTimestamp()
+    });
+  } catch (error) {
+    console.error('[Kids WhatsApp] Group name save rejected', {
+      path: groupRef.path,
+      selectedGroupId: groupId,
+      currentUserUid: user.uid,
+      permissionGranted,
+      code: error?.code,
+      message: error?.message
+    });
+    if (error?.code === 'permission-denied' || error?.message?.includes('Missing or insufficient permissions')) {
+      throw new Error(
+        'Firestore rejected group name update even though this account is an approved group editor. ' +
+        'The latest Firestore rules must be published.'
+      );
+    }
+    throw error;
+  }
+  console.info('[Kids WhatsApp] Group name saved', {
+    path: groupRef.path,
+    selectedGroupId: groupId,
+    currentUserUid: user.uid,
+    groupName: cleanName
   });
   return { id: groupId, ...group, groupName: cleanName, updatedAt: Date.now() };
 }
