@@ -340,8 +340,14 @@ function getGroupManagerUids(group) {
   const legacyAdminUids = Array.isArray(group?.adminUids) ? group.adminUids : [];
   return [...new Set([
     group?.createdBy,
+    group?.creatorId,
+    group?.creatorUid,
+    group?.ownerId,
+    group?.ownerUid,
     group?.hostId,
     group?.hostUid,
+    group?.adminId,
+    group?.adminUid,
     ...adminIds,
     ...legacyAdminUids
   ].map(normalizeManagerUid).filter(Boolean))];
@@ -350,6 +356,42 @@ function getGroupManagerUids(group) {
 export function canManageFirebaseGroup(group, uid) {
   const currentUid = normalizeManagerUid(uid);
   return Boolean(currentUid && getGroupManagerUids(group).includes(currentUid));
+}
+
+function getGroupOwnerSummary(group) {
+  const creatorUid = normalizeManagerUid(
+    group?.createdBy ?? group?.creatorId ?? group?.creatorUid ?? group?.ownerId ?? group?.ownerUid
+  );
+  const hostUid = normalizeManagerUid(group?.hostId ?? group?.hostUid);
+  const adminUids = [...new Set([
+    group?.adminId,
+    group?.adminUid,
+    ...(Array.isArray(group?.adminIds) ? group.adminIds : []),
+    ...(Array.isArray(group?.adminUids) ? group.adminUids : [])
+  ].map(normalizeManagerUid).filter(Boolean))];
+  return { creatorUid, hostUid, adminUids };
+}
+
+function createGroupDeleteRuleError(group, userUid, stage, cause) {
+  const owners = getGroupOwnerSummary(group);
+  const permissionGranted = canManageFirebaseGroup(group, userUid);
+  console.error('[Kids WhatsApp] Group delete rejected', {
+    stage,
+    currentUserUid: userUid,
+    groupId: group?.id,
+    permissionGranted,
+    ...owners,
+    code: cause?.code,
+    message: cause?.message
+  });
+  if (permissionGranted) {
+    return new Error(
+      `Firestore rejected group deletion even though this account is recorded as a group manager. ` +
+      `The deployed Firestore rules are older than the app rules. Blocked while ${stage}.`
+    );
+  }
+  const ownerUid = owners.creatorUid || owners.hostUid || owners.adminUids[0] || 'not recorded';
+  return new Error(`Only group creators, hosts, or admins can delete this group. Group owner UID: ${ownerUid}.`);
 }
 
 function getExistingGroupMembers(group) {
@@ -492,15 +534,44 @@ export async function deleteFirebaseGroup(groupId, user) {
   if (!groupId) throw new Error('Choose a group first.');
 
   const groupRef = doc(firebase.db, 'groups', groupId);
-  await loadApprovedUser(firebase, user.uid);
+  const approvedProfile = await loadApprovedUser(firebase, user.uid);
   const groupSnapshot = await getDoc(groupRef);
-  const group = groupSnapshot.exists() ? groupSnapshot.data() : null;
-  if (!group || !canManageFirebaseGroup(group, user.uid)) {
-    throw new Error('Only group creators, hosts, or admins can delete this group.');
+  const group = groupSnapshot.exists() ? { id: groupSnapshot.id, ...groupSnapshot.data() } : null;
+  const permissionGranted = Boolean(group && canManageFirebaseGroup(group, user.uid));
+  console.info('[Kids WhatsApp] Group delete permission check', {
+    path: groupRef.path,
+    currentUserUid: user.uid,
+    approved: approvedProfile.approved === true,
+    role: approvedProfile.role ?? '',
+    createdBy: group?.createdBy,
+    creatorId: group?.creatorId,
+    creatorUid: group?.creatorUid,
+    ownerId: group?.ownerId,
+    ownerUid: group?.ownerUid,
+    hostId: group?.hostId,
+    hostUid: group?.hostUid,
+    adminId: group?.adminId,
+    adminUid: group?.adminUid,
+    adminIds: group?.adminIds,
+    adminUids: group?.adminUids,
+    permissionGranted
+  });
+  if (!group || !permissionGranted) {
+    throw createGroupDeleteRuleError(group, user.uid, 'checking group ownership');
   }
 
-  await deleteFirebaseGroupMessages(firebase, groupId);
-  await deleteDoc(groupRef);
+  try {
+    console.info('[Kids WhatsApp] Deleting group messages', { path: `${groupRef.path}/messages`, groupId });
+    await deleteFirebaseGroupMessages(firebase, groupId);
+  } catch (error) {
+    throw createGroupDeleteRuleError(group, user.uid, 'deleting group messages', error);
+  }
+  try {
+    console.info('[Kids WhatsApp] Deleting group document', { path: groupRef.path, groupId });
+    await deleteDoc(groupRef);
+  } catch (error) {
+    throw createGroupDeleteRuleError(group, user.uid, 'deleting the group document', error);
+  }
   return groupId;
 }
 

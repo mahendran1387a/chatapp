@@ -367,8 +367,14 @@ function getGroupManagerIds(contact) {
   const legacyAdminUids = Array.isArray(contact?.adminUids) ? contact.adminUids : [];
   return [...new Set([
     contact?.createdBy,
+    contact?.creatorId,
+    contact?.creatorUid,
+    contact?.ownerId,
+    contact?.ownerUid,
     contact?.hostId,
     contact?.hostUid,
+    contact?.adminId,
+    contact?.adminUid,
     ...adminIds,
     ...legacyAdminUids
   ].filter((uid) => typeof uid === 'string' && uid.trim()))];

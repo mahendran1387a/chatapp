@@ -203,6 +203,14 @@ service cloud.firestore {
         (data.participants is list && data.participants.hasAny([request.auth.uid]));
     }
 
+    function groupCreator(data) {
+      return (('createdBy' in data) && data.createdBy == request.auth.uid) ||
+        (('creatorId' in data) && data.creatorId == request.auth.uid) ||
+        (('creatorUid' in data) && data.creatorUid == request.auth.uid) ||
+        (('ownerId' in data) && data.ownerId == request.auth.uid) ||
+        (('ownerUid' in data) && data.ownerUid == request.auth.uid);
+    }
+
     function groupHost(data) {
       return (('hostId' in data) && data.hostId == request.auth.uid) ||
         (('hostUid' in data) && data.hostUid == request.auth.uid);
@@ -210,13 +218,15 @@ service cloud.firestore {
 
     function groupAdmin(data) {
       return (('adminIds' in data) && data.adminIds is list && data.adminIds.hasAny([request.auth.uid])) ||
-        (('adminUids' in data) && data.adminUids is list && data.adminUids.hasAny([request.auth.uid]));
+        (('adminUids' in data) && data.adminUids is list && data.adminUids.hasAny([request.auth.uid])) ||
+        (('adminId' in data) && data.adminId == request.auth.uid) ||
+        (('adminUid' in data) && data.adminUid == request.auth.uid);
     }
 
     function groupManager(data) {
       return approvedUser(request.auth.uid)
         && (
-          data.createdBy == request.auth.uid ||
+          groupCreator(data) ||
           groupHost(data) ||
           groupAdmin(data)
         );

@@ -238,6 +238,7 @@ test('Firebase group helpers and rules protect group membership and sender ident
 test('group delete validates manager uid and removes messages before the group document', () => {
   const firebase = readFileSync(new URL('../src/firebase-chat.js', import.meta.url), 'utf8');
   const app = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
+  const store = readFileSync(new URL('../src/chat-store.js', import.meta.url), 'utf8');
   const rules = readFileSync(new URL('../firestore.rules', import.meta.url), 'utf8');
 
   assert.match(firebase, /getDocs/);
@@ -251,15 +252,46 @@ test('group delete validates manager uid and removes messages before the group d
   assert.match(firebase, /await deleteFirebaseGroupMessages\(firebase, groupId\)/);
   assert.match(firebase, /await deleteDoc\(groupRef\)/);
   assert.match(firebase, /Only group creators, hosts, or admins can delete this group/);
+  assert.match(firebase, /group\?\.creatorId/);
+  assert.match(firebase, /group\?\.creatorUid/);
+  assert.match(firebase, /group\?\.ownerId/);
+  assert.match(firebase, /group\?\.ownerUid/);
+  assert.match(firebase, /group\?\.adminId/);
+  assert.match(firebase, /group\?\.adminUid/);
+  assert.match(firebase, /console\.info\('\[Kids WhatsApp\] Group delete permission check'/);
+  assert.match(firebase, /currentUserUid: user\.uid/);
+  assert.match(firebase, /createdBy: group\?\.createdBy/);
+  assert.match(firebase, /creatorId: group\?\.creatorId/);
+  assert.match(firebase, /hostId: group\?\.hostId/);
+  assert.match(firebase, /adminIds: group\?\.adminIds/);
+  assert.match(firebase, /permissionGranted/);
+  assert.match(firebase, /console\.info\('\[Kids WhatsApp\] Deleting group messages'/);
+  assert.match(firebase, /console\.info\('\[Kids WhatsApp\] Deleting group document'/);
+  assert.match(firebase, /Firestore rejected group deletion even though this account is recorded as a group manager/);
 
   assert.match(app, /window\.confirm\('Delete this group\? Group messages will also be removed\.'\)/);
   assert.match(app, /showToast\('Group deleted'\)/);
   assert.match(app, /Group delete is blocked by Firestore rules/);
+  assert.match(app, /contact\?\.creatorId/);
+  assert.match(app, /contact\?\.ownerId/);
+  assert.match(app, /contact\?\.adminId/);
 
+  assert.match(store, /creatorId: group\.creatorId/);
+  assert.match(store, /ownerId: group\.ownerId/);
+  assert.match(store, /adminId: group\.adminId/);
+
+  assert.match(rules, /function groupCreator\(data\)/);
+  assert.match(rules, /data\.creatorId == request\.auth\.uid/);
+  assert.match(rules, /data\.creatorUid == request\.auth\.uid/);
+  assert.match(rules, /data\.ownerId == request\.auth\.uid/);
+  assert.match(rules, /data\.ownerUid == request\.auth\.uid/);
   assert.match(rules, /function groupHost\(data\)/);
   assert.match(rules, /data\.hostId == request\.auth\.uid/);
   assert.match(rules, /function groupAdmin\(data\)/);
   assert.match(rules, /data\.adminIds is list/);
+  assert.match(rules, /data\.adminId == request\.auth\.uid/);
+  assert.match(rules, /data\.adminUid == request\.auth\.uid/);
+  assert.match(rules, /groupCreator\(data\)/);
   assert.match(rules, /function groupMessageViewer\(groupId\)/);
   assert.match(rules, /groupManager\(get\(\/databases\/\$\(database\)\/documents\/groups\/\$\(groupId\)\)\.data\)/);
   assert.match(rules, /validGroupMessageDelete\(groupId\)/);
