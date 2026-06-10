@@ -81,17 +81,30 @@ test('friends and invites page keeps approved friends in a compact scroll area',
     '../android/app/src/main/assets/www/styles.css'
   ]) {
     const styles = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
+    const mobileStyles = styles.slice(
+      styles.indexOf('@media (max-width: 560px)'),
+      styles.indexOf('@media (max-width: 1180px)')
+    );
+    const genericMobileFormIndex = mobileStyles.indexOf('.friend-search-form {');
+    const mobileInviteFormIndex = mobileStyles.indexOf('.friend-search-form.family-invite-form {');
 
-    assert.match(styles, /\.friends-scroll \{[\s\S]*?display: flex;[\s\S]*?min-height: 0;[\s\S]*?overflow: hidden;/);
-    assert.match(styles, /\.friends-scroll \{[\s\S]*?height: 100%;[\s\S]*?padding-bottom: 0;/);
-    assert.match(styles, /\.friends-invites-shell \{[\s\S]*?display: flex;[\s\S]*?min-height: 0;[\s\S]*?overflow: hidden;/);
+    assert.match(styles, /\.sidebar \{[\s\S]*?height: 100%;[\s\S]*?min-height: 0;[\s\S]*?overflow: hidden;/);
+    assert.match(styles, /\.friends-panel \{[\s\S]*?min-height: 0;[\s\S]*?overflow: hidden;/);
+    assert.match(styles, /\.friends-scroll \{[\s\S]*?display: flex;[\s\S]*?flex: 1 1 auto;[\s\S]*?height: auto;[\s\S]*?min-height: 0;[\s\S]*?overflow: hidden;/);
+    assert.match(styles, /\.friends-invites-shell \{[\s\S]*?display: flex;[\s\S]*?flex: 1 1 auto;[\s\S]*?height: auto;[\s\S]*?min-height: 0;[\s\S]*?overflow: hidden;/);
     assert.match(styles, /\.friends-invites-shell \.pending-family-list \{[\s\S]*?max-height: min\(26svh, 230px\);[\s\S]*?margin-top: 6px;/);
     assert.match(styles, /\.family-invite-form \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) minmax\(140px, 180px\);[\s\S]*?align-items: end;/);
     assert.match(styles, /\.invite-friend-intro,[\s\S]*?\.family-invite-form,[\s\S]*?#friendSearchForm,[\s\S]*?\.create-group-action \{[\s\S]*?flex: 0 0 auto;/);
-    assert.match(styles, /\.friend-search-results \{[\s\S]*?flex: 1 1 auto;[\s\S]*?grid-auto-rows: min-content;[\s\S]*?min-height: 120px;[\s\S]*?max-height: min\(34svh, 330px\);[\s\S]*?overflow-y: auto;[\s\S]*?overflow-x: hidden;/);
+    assert.match(styles, /\.friend-search-results \{[\s\S]*?flex: 1 1 0;[\s\S]*?grid-auto-rows: min-content;[\s\S]*?min-height: 0;[\s\S]*?max-height: none;[\s\S]*?overflow-y: auto;[\s\S]*?overflow-x: hidden;/);
     assert.match(styles, /\.friend-search-results \.auth-user-row \{[\s\S]*?align-self: start;[\s\S]*?min-height: 64px;[\s\S]*?padding: 9px 12px;/);
-    assert.match(styles, /@media \(max-width: 560px\) \{[\s\S]*?\.family-invite-form \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\);/);
-    assert.match(styles, /@media \(max-width: 560px\) \{[\s\S]*?\.friend-search-results \{[\s\S]*?max-height: min\(30svh, 240px\);/);
+    assert.match(mobileStyles, /\.friend-search-form\.family-invite-form \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) minmax\(120px, 145px\);/);
+    assert.ok(genericMobileFormIndex !== -1);
+    assert.ok(mobileInviteFormIndex > genericMobileFormIndex);
+    assert.match(styles, /@media \(max-width: 560px\) \{[\s\S]*?\.friend-search-results \{[\s\S]*?min-height: 0;[\s\S]*?max-height: none;/);
+    assert.match(styles, /@media \(max-width: 560px\) and \(max-height: 760px\) \{[\s\S]*?\.friends-invites-shell > \.invite-friend-intro:first-child \{[\s\S]*?display: none;/);
+    assert.match(styles, /@media \(max-width: 560px\) and \(max-height: 760px\) \{[\s\S]*?\.friends-invites-shell > \.invite-friend-intro p \{[\s\S]*?display: none;/);
+    assert.match(styles, /@media \(max-width: 560px\) and \(max-height: 760px\) \{[\s\S]*?\.friends-invites-shell \.pending-family-message \{[\s\S]*?display: none;/);
+    assert.match(styles, /@media \(max-width: 850px\) \{[\s\S]*?\.friends-scroll \{[\s\S]*?padding-bottom: 0;/);
   }
 });
 
