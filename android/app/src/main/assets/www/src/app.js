@@ -13,7 +13,6 @@ import {
   reconcileAuthenticatedContacts,
   searchSettings,
   selectContact,
-  sendMessage,
   switchSection,
   updateMessage
 } from './chat-store.js';
@@ -1351,14 +1350,6 @@ function renderConversation() {
       showFirebaseError(error);
       return;
     }
-    state = sendMessage(state, text, {
-      senderId: currentClientId,
-      senderUid: currentAuthUser.uid,
-      senderEmail: currentAuthUser.email ?? '',
-      senderDisplayName: getUserName(currentAuthUser),
-      senderPhotoURL: currentAuthUser.photoURL ?? ''
-    });
-    saveChatState();
     input.value = '';
     renderAll();
     conversation.querySelector('#messageInput').focus();

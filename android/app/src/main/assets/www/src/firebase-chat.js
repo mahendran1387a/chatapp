@@ -771,8 +771,11 @@ export async function sendFirebaseMessage(contactUid, text, user) {
     participants,
     updatedAt: serverTimestamp()
   }, { merge: true });
-  await addDoc(collection(firebase.db, 'conversations', conversationId, 'messages'), payload);
-  return payload;
+  const messageRef = await addDoc(
+    collection(firebase.db, 'conversations', conversationId, 'messages'),
+    payload
+  );
+  return { id: messageRef.id, ...payload };
 }
 
 export function subscribeConversationMessages(currentUid, contactUid, onMessages, onError) {
@@ -828,8 +831,8 @@ export async function sendFirebaseGroupMessage(groupId, text, user) {
     timestamp: serverTimestamp()
   };
 
-  await addDoc(collection(firebase.db, 'groups', groupId, 'messages'), payload);
-  return payload;
+  const messageRef = await addDoc(collection(firebase.db, 'groups', groupId, 'messages'), payload);
+  return { id: messageRef.id, ...payload };
 }
 
 export function subscribeGroupMessages(groupId, currentUid, onMessages, onError) {

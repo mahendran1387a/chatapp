@@ -153,7 +153,6 @@ test('kids-safe app keeps Google identity as the only chat identity source', () 
   const rules = readFileSync(new URL('../firestore.rules', import.meta.url), 'utf8');
 
   assert.match(app, /currentAuthUser\.uid/);
-  assert.match(app, /currentAuthUser\.email/);
   assert.match(firebase, /senderUid: user\.uid/);
   assert.match(firebase, /senderEmail: user\.email/);
   assert.match(firebase, /readBy: \[user\.uid\]/);
