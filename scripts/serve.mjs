@@ -1,6 +1,8 @@
+import { createVerify } from 'node:crypto';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, normalize } from 'node:path';
+import { WebSocket, WebSocketServer } from 'ws';
 import { createChatStateStore } from './chat-state-store.mjs';
 import { readRequestBody } from './http-utils.mjs';
 
@@ -8,6 +10,17 @@ const root = process.cwd();
 const port = Number(process.env.PORT ?? 4173);
 const host = process.env.HOST ?? '0.0.0.0';
 const chatStateStore = createChatStateStore({ root });
+const firebaseProjectId = process.env.FIREBASE_PROJECT_ID ?? 'kidswhatsapp-6fffb';
+const allowUnverifiedVoiceSignaling = process.env.VOICE_SIGNALING_ALLOW_UNVERIFIED === 'true';
+let firebaseCertCache = { expiresAt: 0, certs: {} };
+const voiceSignalTypes = new Set([
+  'call-offer',
+  'call-answer',
+  'ice-candidate',
+  'call-reject',
+  'call-ended',
+  'call-timeout'
+]);
 const types = {
   '.css': 'text/css',
   '.html': 'text/html',
@@ -64,7 +77,193 @@ async function handleChatsApi(request, response) {
   response.end('Method not allowed');
 }
 
-createServer(async (request, response) => {
+function base64UrlToBuffer(value) {
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), '=');
+  return Buffer.from(padded, 'base64');
+}
+
+function readJwtJson(encodedPart) {
+  return JSON.parse(base64UrlToBuffer(encodedPart).toString('utf8'));
+}
+
+async function getFirebaseSigningCerts() {
+  const now = Date.now();
+  if (firebaseCertCache.expiresAt > now && Object.keys(firebaseCertCache.certs).length) {
+    return firebaseCertCache.certs;
+  }
+
+  const response = await fetch('https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com');
+  if (!response.ok) {
+    throw new Error(`Could not load Firebase signing certificates: ${response.status}`);
+  }
+  const cacheControl = response.headers.get('cache-control') ?? '';
+  const maxAgeSeconds = Number(cacheControl.match(/max-age=(\d+)/)?.[1] ?? 300);
+  firebaseCertCache = {
+    expiresAt: now + maxAgeSeconds * 1000,
+    certs: await response.json()
+  };
+  return firebaseCertCache.certs;
+}
+
+async function verifyFirebaseIdToken(idToken) {
+  if (typeof idToken !== 'string' || !idToken.trim()) {
+    throw new Error('Missing Firebase ID token.');
+  }
+
+  const [encodedHeader, encodedPayload, encodedSignature] = idToken.split('.');
+  if (!encodedHeader || !encodedPayload || !encodedSignature) {
+    throw new Error('Invalid Firebase ID token.');
+  }
+
+  const header = readJwtJson(encodedHeader);
+  const payload = readJwtJson(encodedPayload);
+  if (header.alg !== 'RS256') {
+    throw new Error('Unexpected Firebase token signing algorithm.');
+  }
+  if (payload.aud !== firebaseProjectId) {
+    throw new Error('Firebase token project did not match this app.');
+  }
+  if (payload.iss !== `https://securetoken.google.com/${firebaseProjectId}`) {
+    throw new Error('Firebase token issuer did not match this app.');
+  }
+  if (!payload.sub) {
+    throw new Error('Firebase token did not include a user ID.');
+  }
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  if (Number(payload.exp ?? 0) <= nowSeconds) {
+    throw new Error('Firebase token has expired.');
+  }
+
+  const certs = await getFirebaseSigningCerts();
+  const cert = certs[header.kid];
+  if (!cert) {
+    throw new Error('Firebase signing certificate was not found.');
+  }
+  const verifier = createVerify('RSA-SHA256');
+  verifier.update(`${encodedHeader}.${encodedPayload}`);
+  verifier.end();
+  const valid = verifier.verify(cert, base64UrlToBuffer(encodedSignature));
+  if (!valid) {
+    throw new Error('Firebase token signature could not be verified.');
+  }
+  return payload;
+}
+
+async function verifyVoiceHello(uid, idToken) {
+  const decodedToken = allowUnverifiedVoiceSignaling
+    ? { sub: uid }
+    : await verifyFirebaseIdToken(idToken);
+  if (decodedToken.sub !== uid) {
+    throw new Error('Firebase token user did not match the voice connection user.');
+  }
+  return decodedToken;
+}
+
+function sendVoiceJson(socket, payload) {
+  if (socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify(payload));
+  }
+}
+
+function addVoiceClient(clientsByUid, socket, uid) {
+  const existing = clientsByUid.get(uid) ?? new Set();
+  existing.add(socket);
+  clientsByUid.set(uid, existing);
+  socket.userUid = uid;
+}
+
+function removeVoiceClient(clientsByUid, socket) {
+  if (!socket.userUid) return;
+  const clients = clientsByUid.get(socket.userUid);
+  if (!clients) return;
+  clients.delete(socket);
+  if (!clients.size) clientsByUid.delete(socket.userUid);
+}
+
+function handleVoiceSignal(clientsByUid, socket, message) {
+  if (!socket.userUid) {
+    sendVoiceJson(socket, { type: 'voice-error', message: 'Sign in before starting a call.' });
+    return;
+  }
+  if (message.senderUid !== socket.userUid) {
+    sendVoiceJson(socket, { type: 'voice-error', message: 'Caller identity did not match the signed-in user.' });
+    return;
+  }
+  if (!voiceSignalTypes.has(message.type)) {
+    sendVoiceJson(socket, { type: 'voice-error', message: 'Unknown call signal.' });
+    return;
+  }
+
+  const recipientUid = typeof message.recipientUid === 'string' ? message.recipientUid.trim() : '';
+  const targets = clientsByUid.get(recipientUid);
+  if (!recipientUid || !targets?.size) {
+    sendVoiceJson(socket, {
+      type: 'recipient-offline',
+      callId: message.callId,
+      recipientUid,
+      message: 'That friend is not connected for voice calls right now.'
+    });
+    return;
+  }
+
+  const forwarded = {
+    ...message,
+    senderUid: socket.userUid,
+    fromUid: socket.userUid,
+    serverTime: Date.now()
+  };
+  for (const target of targets) {
+    sendVoiceJson(target, forwarded);
+  }
+}
+
+function setupVoiceSignalling(server) {
+  const clientsByUid = new Map();
+  const wss = new WebSocketServer({ server, path: '/voice' });
+
+  wss.on('connection', (socket) => {
+    socket.on('message', async (rawMessage) => {
+      let message;
+      try {
+        message = JSON.parse(rawMessage.toString());
+      } catch {
+        sendVoiceJson(socket, { type: 'voice-error', message: 'Voice signal was not valid JSON.' });
+        return;
+      }
+
+      if (message.type === 'hello') {
+        const uid = typeof message.uid === 'string' ? message.uid.trim() : '';
+        if (!uid) {
+          sendVoiceJson(socket, { type: 'voice-error', message: 'Voice connection needs a signed-in user.' });
+          return;
+        }
+        try {
+          await verifyVoiceHello(uid, message.idToken);
+        } catch (error) {
+          console.warn('[Kids WhatsApp] Voice auth rejected', { uid, error: error.message });
+          sendVoiceJson(socket, {
+            type: 'voice-error',
+            message: 'Voice sign-in could not be verified. Refresh and sign in again.'
+          });
+          socket.close(1008, 'Voice auth failed');
+          return;
+        }
+        removeVoiceClient(clientsByUid, socket);
+        addVoiceClient(clientsByUid, socket, uid);
+        sendVoiceJson(socket, { type: 'voice-ready', uid });
+        return;
+      }
+
+      handleVoiceSignal(clientsByUid, socket, message);
+    });
+
+    socket.on('close', () => removeVoiceClient(clientsByUid, socket));
+    socket.on('error', () => removeVoiceClient(clientsByUid, socket));
+  });
+}
+
+const server = createServer(async (request, response) => {
   const pathname = new URL(request.url ?? '/', `http://127.0.0.1:${port}`).pathname;
   if (pathname === '/healthz') {
     sendJson(response, 200, { ok: true });
@@ -94,7 +293,11 @@ createServer(async (request, response) => {
     'X-Content-Type-Options': 'nosniff'
   });
   createReadStream(filePath).pipe(response);
-}).listen(port, host, () => {
+});
+
+setupVoiceSignalling(server);
+
+server.listen(port, host, () => {
   console.log(`ChatApp running at http://127.0.0.1:${port}`);
   console.log(`LAN access enabled at http://<this-computer-ip>:${port}`);
 });

@@ -237,6 +237,28 @@ const profileOwnershipLabels = {
 const quickEmojiValues = ['😀', '😂', '🎮', '🚀', '🦄', '🍕', '⚽'];
 const quickEmojiLabel = '😀 😂 🎮 🚀 🦄 🍕 ⚽';
 
+const voiceCallTimeoutMs = 30000;
+const voiceCallIceServers = getVoiceCallIceServers();
+const voiceCallStateLabels = ['Calling', 'Ringing', 'Connected', 'Failed', 'Ended'];
+let voiceSocket = null;
+let voiceSocketReady = false;
+let voiceSocketReadyPromise = null;
+let voiceSignalQueue = [];
+let voicePeerConnection = null;
+let voiceLocalStream = null;
+let voiceRemoteStream = null;
+let pendingVoiceCandidates = [];
+let voiceCallTimeout = null;
+let voiceCallState = {
+  status: 'idle',
+  callId: '',
+  direction: '',
+  recipientUid: '',
+  contact: null,
+  pendingOffer: null,
+  message: ''
+};
+
 const chatList = document.querySelector('#chatList');
 const searchInput = document.querySelector('#searchInput');
 const conversation = document.querySelector('#conversation');
@@ -352,6 +374,585 @@ function renderContactStatus(contact, extraClass = '') {
     return `<span class="presence-status group ${extraClass}">${getGroupMemberLabel(contact)}</span>`;
   }
   return renderPresenceStatus(contact?.onlineStatus, extraClass);
+}
+
+function getVoiceCallIceServers() {
+  const configuredTurnServers = Array.isArray(window.KIDS_WHATSAPP_TURN_SERVERS)
+    ? window.KIDS_WHATSAPP_TURN_SERVERS
+    : [];
+  const safeTurnServers = configuredTurnServers
+    .filter((server) => server?.urls)
+    .map((server) => ({
+      urls: server.urls,
+      ...(server.username ? { username: server.username } : {}),
+      ...(server.credential ? { credential: server.credential } : {})
+    }));
+
+  return [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    ...safeTurnServers
+  ];
+}
+
+function getVoiceSocketUrl() {
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${location.host}/voice`;
+}
+
+function createVoiceCallId() {
+  return `call-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function getVoiceCallStatusLabel(status) {
+  return voiceCallStateLabels.includes(status) ? status : 'Calling';
+}
+
+function getVoiceContactName(contact) {
+  return contact?.name || contact?.displayName || contact?.email || 'your friend';
+}
+
+function getActiveVoiceContact() {
+  const contact = getActiveContact(state);
+  if (!contact?.uid || contact?.groupId) return null;
+  return contact;
+}
+
+function isVoiceCallActive() {
+  return !['idle', 'Failed', 'Ended'].includes(voiceCallState.status);
+}
+
+function setVoiceCallState(nextState) {
+  voiceCallState = {
+    ...voiceCallState,
+    ...nextState
+  };
+  renderVoiceCallDialog();
+}
+
+function clearVoiceCallTimer() {
+  if (!voiceCallTimeout) return;
+  window.clearTimeout(voiceCallTimeout);
+  voiceCallTimeout = null;
+}
+
+function startVoiceCallTimer(callId, recipientUid) {
+  clearVoiceCallTimer();
+  voiceCallTimeout = window.setTimeout(() => {
+    if (voiceCallState.callId !== callId || voiceCallState.status !== 'Calling') return;
+    sendVoiceSignal({
+      type: 'call-timeout',
+      callId,
+      recipientUid
+    });
+    finishVoiceCall('Failed', 'Call timed out. Your friend may be offline.');
+  }, voiceCallTimeoutMs);
+}
+
+function getVoiceRemoteAudio() {
+  return document.querySelector('[data-voice-remote]');
+}
+
+function syncVoiceRemoteAudio() {
+  const audio = getVoiceRemoteAudio();
+  if (audio && voiceRemoteStream) {
+    audio.srcObject = voiceRemoteStream;
+  }
+}
+
+function renderVoiceCallDialog() {
+  const existing = document.querySelector('[data-voice-call-dialog]');
+  if (voiceCallState.status === 'idle') {
+    existing?.remove();
+    return;
+  }
+
+  const contactName = escapeHtml(getVoiceContactName(voiceCallState.contact));
+  const statusLabel = getVoiceCallStatusLabel(voiceCallState.status);
+  const message = escapeHtml(voiceCallState.message || '');
+  const canAnswer = voiceCallState.status === 'Ringing' && voiceCallState.direction === 'incoming';
+  const canEnd = ['Calling', 'Ringing', 'Connected'].includes(voiceCallState.status);
+  const canClose = ['Failed', 'Ended'].includes(voiceCallState.status);
+  const controls = canAnswer
+    ? `
+      <button class="detail-action" type="button" data-voice-call-answer>Answer</button>
+      <button class="detail-action voice-secondary-action" type="button" data-voice-call-reject>Reject</button>
+    `
+    : canEnd
+      ? '<button class="detail-action voice-secondary-action" type="button" data-voice-call-end>End call</button>'
+      : canClose
+        ? '<button class="detail-action" type="button" data-voice-call-close>Close</button>'
+        : '';
+
+  const backdrop = existing ?? document.createElement('div');
+  backdrop.className = 'action-dialog-backdrop voice-call-backdrop';
+  backdrop.setAttribute('data-voice-call-dialog', '');
+  backdrop.innerHTML = `
+    <section class="action-dialog voice-call-dialog" role="dialog" aria-label="Voice call">
+      <div class="detail-illustration"></div>
+      <h2>${statusLabel}</h2>
+      <p><strong>${contactName}</strong></p>
+      <p>${message}</p>
+      <small>Voice only. No video, photos, or files.</small>
+      <audio data-voice-remote autoplay playsinline></audio>
+      <div class="voice-call-controls">${controls}</div>
+    </section>
+  `;
+  if (!existing) document.body.append(backdrop);
+  syncVoiceRemoteAudio();
+}
+
+function cleanupVoicePeerAndMedia() {
+  clearVoiceCallTimer();
+  pendingVoiceCandidates = [];
+  if (voicePeerConnection) {
+    voicePeerConnection.ontrack = null;
+    voicePeerConnection.onicecandidate = null;
+    voicePeerConnection.onconnectionstatechange = null;
+    voicePeerConnection.oniceconnectionstatechange = null;
+    voicePeerConnection.close();
+    voicePeerConnection = null;
+  }
+  if (voiceLocalStream) {
+    voiceLocalStream.getTracks().forEach((track) => track.stop());
+    voiceLocalStream = null;
+  }
+  voiceRemoteStream = null;
+}
+
+function resetVoiceCall() {
+  cleanupVoicePeerAndMedia();
+  voiceCallState = {
+    status: 'idle',
+    callId: '',
+    direction: '',
+    recipientUid: '',
+    contact: null,
+    pendingOffer: null,
+    message: ''
+  };
+  renderVoiceCallDialog();
+}
+
+function finishVoiceCall(status = 'Ended', message = 'Call ended.') {
+  cleanupVoicePeerAndMedia();
+  setVoiceCallState({
+    status,
+    pendingOffer: null,
+    message
+  });
+}
+
+function endVoiceCall(status = 'Ended', message = 'Call ended.', notifyPeer = true) {
+  const { callId, recipientUid } = voiceCallState;
+  if (notifyPeer && callId && recipientUid && currentAuthUser?.uid) {
+    if (status === 'Failed') {
+      sendVoiceSignal({
+        type: 'call-timeout',
+        callId,
+        recipientUid
+      });
+    } else {
+      sendVoiceSignal({
+        type: 'call-ended',
+        callId,
+        recipientUid
+      });
+    }
+  }
+  finishVoiceCall(status, message);
+}
+
+function closeVoiceSocket() {
+  voiceSocketReady = false;
+  voiceSocketReadyPromise = null;
+  voiceSignalQueue = [];
+  if (voiceSocket) {
+    voiceSocket.onclose = null;
+    voiceSocket.onerror = null;
+    voiceSocket.onmessage = null;
+    voiceSocket.close();
+    voiceSocket = null;
+  }
+}
+
+function readVoiceSignal(rawData) {
+  try {
+    return JSON.parse(rawData);
+  } catch {
+    return null;
+  }
+}
+
+function flushVoiceSignalQueue() {
+  if (!voiceSocketReady || voiceSocket?.readyState !== WebSocket.OPEN) return;
+  const queuedSignals = voiceSignalQueue;
+  voiceSignalQueue = [];
+  queuedSignals.forEach((message) => voiceSocket.send(JSON.stringify(message)));
+}
+
+function sendVoiceSignal(payload) {
+  if (!currentAuthUser?.uid) return;
+  const message = {
+    ...payload,
+    senderUid: currentAuthUser.uid,
+    senderEmail: currentAuthUser.email ?? '',
+    senderDisplayName: currentAuthUser.displayName ?? currentAuthUser.email ?? 'Google user',
+    senderPhotoURL: currentAuthUser.photoURL ?? ''
+  };
+  if (voiceSocketReady && voiceSocket?.readyState === WebSocket.OPEN) {
+    voiceSocket.send(JSON.stringify(message));
+    return;
+  }
+  voiceSignalQueue.push(message);
+}
+
+async function sendVoiceHello(socket) {
+  const idToken = typeof currentAuthUser?.getIdToken === 'function'
+    ? await currentAuthUser.getIdToken()
+    : '';
+  socket.send(JSON.stringify({
+    type: 'hello',
+    uid: currentAuthUser.uid,
+    email: currentAuthUser.email ?? '',
+    displayName: currentAuthUser.displayName ?? currentAuthUser.email ?? 'Google user',
+    idToken
+  }));
+}
+
+async function ensureVoiceSocket() {
+  if (!currentAuthUser?.uid) throw new Error('Sign in before starting a voice call.');
+  if (!('WebSocket' in window)) throw new Error('This browser cannot open voice calls.');
+  if (voiceSocketReady && voiceSocket?.readyState === WebSocket.OPEN) return voiceSocket;
+  if (voiceSocketReadyPromise) return voiceSocketReadyPromise;
+
+  voiceSocket = new WebSocket(getVoiceSocketUrl());
+  voiceSocketReady = false;
+  voiceSocket.addEventListener('message', handleVoiceSocketMessage);
+  voiceSocket.addEventListener('close', () => {
+    voiceSocketReady = false;
+    voiceSocketReadyPromise = null;
+    if (isVoiceCallActive()) {
+      finishVoiceCall('Failed', 'Voice connection was lost. Try again.');
+    }
+  });
+  voiceSocket.addEventListener('error', () => {
+    if (isVoiceCallActive()) {
+      finishVoiceCall('Failed', 'Voice connection failed. Try again.');
+    }
+  });
+
+  voiceSocketReadyPromise = new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      voiceSocketReadyPromise = null;
+      reject(new Error('Voice connection timed out. Try again.'));
+    }, 10000);
+
+    const readyListener = (event) => {
+      const message = readVoiceSignal(event.data);
+      if (message?.type === 'voice-ready' && message.uid === currentAuthUser?.uid) {
+        window.clearTimeout(timeout);
+        voiceSocket.removeEventListener('message', readyListener);
+        voiceSocketReady = true;
+        voiceSocketReadyPromise = null;
+        flushVoiceSignalQueue();
+        resolve(voiceSocket);
+      }
+      if (message?.type === 'voice-error') {
+        window.clearTimeout(timeout);
+        voiceSocket.removeEventListener('message', readyListener);
+        voiceSocketReadyPromise = null;
+        reject(new Error(message.message || 'Voice connection failed.'));
+      }
+    };
+
+    voiceSocket.addEventListener('open', () => {
+      sendVoiceHello(voiceSocket).catch((error) => {
+        window.clearTimeout(timeout);
+        voiceSocket.removeEventListener('message', readyListener);
+        voiceSocketReadyPromise = null;
+        reject(error);
+      });
+    }, { once: true });
+    voiceSocket.addEventListener('message', readyListener);
+    voiceSocket.addEventListener('error', () => {
+      window.clearTimeout(timeout);
+      voiceSocket.removeEventListener('message', readyListener);
+      voiceSocketReadyPromise = null;
+      reject(new Error('Voice connection failed. Try again.'));
+    }, { once: true });
+  });
+
+  return voiceSocketReadyPromise;
+}
+
+async function getVoiceLocalStream() {
+  if (voiceLocalStream?.active) return voiceLocalStream;
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error('Microphone permission is needed, but this browser does not support voice calls.');
+  }
+  try {
+    voiceLocalStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    return voiceLocalStream;
+  } catch {
+    throw new Error('Microphone permission is needed to start a voice call. Allow the microphone and try again.');
+  }
+}
+
+function createVoicePeerConnection(callId, recipientUid) {
+  voiceRemoteStream = new MediaStream();
+  const peer = new RTCPeerConnection({ iceServers: voiceCallIceServers });
+  voicePeerConnection = peer;
+
+  peer.addEventListener('track', (event) => {
+    const [remoteStream] = event.streams;
+    if (remoteStream) {
+      remoteStream.getTracks().forEach((track) => voiceRemoteStream.addTrack(track));
+      syncVoiceRemoteAudio();
+    }
+  });
+
+  peer.addEventListener('icecandidate', (event) => {
+    if (!event.candidate) return;
+    sendVoiceSignal({
+      type: 'ice-candidate',
+      callId,
+      recipientUid,
+      candidate: event.candidate.toJSON ? event.candidate.toJSON() : event.candidate
+    });
+  });
+
+  peer.addEventListener('connectionstatechange', () => {
+    if (peer.connectionState === 'connected') {
+      clearVoiceCallTimer();
+      setVoiceCallState({ status: 'Connected', message: 'Connected. Say hello!' });
+    }
+    if (['failed', 'closed', 'disconnected'].includes(peer.connectionState) && isVoiceCallActive()) {
+      finishVoiceCall('Failed', 'Voice call disconnected. Try again.');
+    }
+  });
+
+  peer.addEventListener('iceconnectionstatechange', () => {
+    if (['connected', 'completed'].includes(peer.iceConnectionState)) {
+      clearVoiceCallTimer();
+      setVoiceCallState({ status: 'Connected', message: 'Connected. Say hello!' });
+    }
+    if (['failed', 'disconnected'].includes(peer.iceConnectionState) && isVoiceCallActive()) {
+      finishVoiceCall('Failed', 'Could not connect audio. A TURN relay may be needed on this network.');
+    }
+  });
+
+  return peer;
+}
+
+async function addPendingVoiceCandidates() {
+  if (!voicePeerConnection?.remoteDescription) return;
+  const candidates = pendingVoiceCandidates;
+  pendingVoiceCandidates = [];
+  for (const candidate of candidates) {
+    await voicePeerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+  }
+}
+
+async function addVoiceIceCandidate(candidate) {
+  if (!candidate) return;
+  if (!voicePeerConnection?.remoteDescription) {
+    pendingVoiceCandidates.push(candidate);
+    return;
+  }
+  await voicePeerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+}
+
+function findSignalUser(message) {
+  return authenticatedUsers.find((user) => user.uid === message.senderUid) ?? {
+    uid: message.senderUid,
+    email: message.senderEmail ?? '',
+    displayName: message.senderDisplayName ?? message.senderUid,
+    photoURL: message.senderPhotoURL ?? '',
+    name: message.senderDisplayName ?? message.senderEmail ?? 'Google friend'
+  };
+}
+
+async function startVoiceCall() {
+  if (!currentAuthUser?.uid) {
+    showToast('Sign in before starting a voice call.');
+    return;
+  }
+  const contact = getActiveContact(state);
+  if (contact?.groupId) {
+    showToast('Voice calls are only for one-to-one chats.');
+    return;
+  }
+  if (!contact?.uid) {
+    showToast('Choose a signed-in friend first.');
+    return;
+  }
+  const recipient = authenticatedUsers.find((user) => user.uid === contact.uid);
+  if (!recipient) {
+    showToast('Your friend needs to be signed in and approved first.');
+    return;
+  }
+
+  resetVoiceCall();
+  const callId = createVoiceCallId();
+  setVoiceCallState({
+    status: 'Calling',
+    callId,
+    direction: 'outgoing',
+    recipientUid: contact.uid,
+    contact,
+    message: `Calling ${getVoiceContactName(contact)}...`
+  });
+
+  try {
+    await ensureVoiceSocket();
+    const localStream = await getVoiceLocalStream();
+    const peer = createVoicePeerConnection(callId, contact.uid);
+    localStream.getTracks().forEach((track) => peer.addTrack(track, localStream));
+    const offer = await peer.createOffer();
+    await peer.setLocalDescription(offer);
+    sendVoiceSignal({
+      type: 'call-offer',
+      callId,
+      recipientUid: contact.uid,
+      offer
+    });
+    startVoiceCallTimer(callId, contact.uid);
+  } catch (error) {
+    finishVoiceCall('Failed', error.message || 'Voice call failed. Try again.');
+  }
+}
+
+async function answerVoiceCall() {
+  if (voiceCallState.status !== 'Ringing' || !voiceCallState.pendingOffer || !voiceCallState.recipientUid) return;
+  const { callId, recipientUid, pendingOffer } = voiceCallState;
+  try {
+    await ensureVoiceSocket();
+    const localStream = await getVoiceLocalStream();
+    const peer = createVoicePeerConnection(callId, recipientUid);
+    localStream.getTracks().forEach((track) => peer.addTrack(track, localStream));
+    await peer.setRemoteDescription(new RTCSessionDescription(pendingOffer));
+    await addPendingVoiceCandidates();
+    const answer = await peer.createAnswer();
+    await peer.setLocalDescription(answer);
+    sendVoiceSignal({
+      type: 'call-answer',
+      callId,
+      recipientUid,
+      answer
+    });
+    setVoiceCallState({ status: 'Connected', pendingOffer: null, message: 'Connected. Say hello!' });
+  } catch (error) {
+    sendVoiceSignal({
+      type: 'call-reject',
+      callId,
+      recipientUid,
+      reason: 'microphone-failed'
+    });
+    finishVoiceCall('Failed', error.message || 'Could not answer the call.');
+  }
+}
+
+function rejectVoiceCall() {
+  if (!voiceCallState.callId || !voiceCallState.recipientUid) {
+    resetVoiceCall();
+    return;
+  }
+  sendVoiceSignal({
+    type: 'call-reject',
+    callId: voiceCallState.callId,
+    recipientUid: voiceCallState.recipientUid,
+    reason: 'rejected'
+  });
+  finishVoiceCall('Ended', 'Call ended.');
+}
+
+async function handleVoiceSocketMessage(event) {
+  const message = readVoiceSignal(event.data);
+  if (!message || message.type === 'voice-ready') return;
+
+  if (message.type === 'voice-error') {
+    if (isVoiceCallActive()) {
+      finishVoiceCall('Failed', message.message || 'Voice call failed.');
+    } else {
+      showToast(message.message || 'Voice call failed.');
+    }
+    return;
+  }
+
+  if (message.type === 'recipient-offline') {
+    if (message.callId === voiceCallState.callId) {
+      finishVoiceCall('Failed', message.message || 'That friend is not connected for voice calls right now.');
+    }
+    return;
+  }
+
+  if (message.recipientUid && message.recipientUid !== currentAuthUser?.uid) return;
+
+  if (message.type === 'call-offer') {
+    if (!message.callId || !message.senderUid || !message.offer) return;
+    if (isVoiceCallActive()) {
+      sendVoiceSignal({
+        type: 'call-reject',
+        callId: message.callId,
+        recipientUid: message.senderUid,
+        reason: 'busy'
+      });
+      return;
+    }
+    const caller = findSignalUser(message);
+    setVoiceCallState({
+      status: 'Ringing',
+      callId: message.callId,
+      direction: 'incoming',
+      recipientUid: message.senderUid,
+      contact: caller,
+      pendingOffer: message.offer,
+      message: `${getVoiceContactName(caller)} is calling you.`
+    });
+    return;
+  }
+
+  if (message.callId !== voiceCallState.callId) return;
+
+  if (message.type === 'call-answer') {
+    if (!voicePeerConnection || !message.answer) return;
+    try {
+      await voicePeerConnection.setRemoteDescription(new RTCSessionDescription(message.answer));
+      await addPendingVoiceCandidates();
+      clearVoiceCallTimer();
+      setVoiceCallState({ status: 'Connected', message: 'Connected. Say hello!' });
+    } catch (error) {
+      finishVoiceCall('Failed', error.message || 'Could not connect the voice call.');
+    }
+    return;
+  }
+
+  if (message.type === 'ice-candidate') {
+    try {
+      await addVoiceIceCandidate(message.candidate);
+    } catch (error) {
+      console.warn('[Kids WhatsApp] Could not add voice ICE candidate', error);
+    }
+    return;
+  }
+
+  if (message.type === 'call-reject') {
+    const reason = message.reason === 'busy'
+      ? 'Your friend is already on a call.'
+      : 'Your friend did not answer this call.';
+    finishVoiceCall('Ended', reason);
+    return;
+  }
+
+  if (message.type === 'call-timeout') {
+    finishVoiceCall('Failed', 'Call timed out.');
+    return;
+  }
+
+  if (message.type === 'call-ended') {
+    finishVoiceCall('Ended', 'Call ended.');
+  }
 }
 
 function isCurrentUserOwner() {
@@ -525,6 +1126,10 @@ async function handleGoogleLogout() {
   activeSettingsPage = null;
   mobileConversationOpen = false;
   state = switchSection(state, 'chats');
+  if (isVoiceCallActive()) {
+    endVoiceCall('Ended', 'Signed out. Call ended.');
+  }
+  closeVoiceSocket();
   updateCurrentPresence('offline');
   try {
     await logoutGoogleUser();
@@ -597,6 +1202,9 @@ function renderDetailView(view, type = 'action') {
     renderMenuView(view);
     return;
   }
+  const primaryAttribute = view.actionId === 'voiceCall'
+    ? 'type="button" data-start-voice-call'
+    : `data-action-toast="${view.title}"`;
   const iconClass = type === 'settings' ? 'settings-illustration' : 'detail-illustration';
   emptyState.classList.remove('hidden');
   conversation.classList.add('hidden');
@@ -607,7 +1215,7 @@ function renderDetailView(view, type = 'action') {
     <div class="detail-list">
       ${view.points.map((point) => `<span>${point}</span>`).join('')}
     </div>
-    <button class="detail-action" data-action-toast="${view.title}">${view.primaryAction}</button>
+    <button class="detail-action" ${primaryAttribute}>${view.primaryAction}</button>
   `;
 }
 
@@ -1429,7 +2037,10 @@ function renderSection() {
   conversation.classList.add('hidden');
 
   if (activeAction) {
-    renderDetailView(getActionView(activeAction), state.activeSection === 'settings' ? 'settings' : 'action');
+    renderDetailView(
+      { ...getActionView(activeAction), actionId: activeAction },
+      state.activeSection === 'settings' ? 'settings' : 'action'
+    );
     return;
   }
 
@@ -1877,7 +2488,11 @@ function showActionDialog(view) {
       </section>
     `;
   } else {
-  const primaryAttribute = view.finalAction ? `data-final-action="${view.finalAction}"` : `data-action-toast="${view.title}"`;
+  const primaryAttribute = view.actionId === 'voiceCall'
+    ? 'type="button" data-start-voice-call'
+    : view.finalAction
+      ? `data-final-action="${view.finalAction}"`
+      : `data-action-toast="${view.title}"`;
   backdrop.innerHTML = `
     <section class="action-dialog" role="dialog" aria-label="${view.title}">
       <button class="dialog-close" aria-label="Close">x</button>
@@ -1937,7 +2552,7 @@ function openAction(actionId) {
   }
   activeAction = actionId;
   renderAll();
-  const view = getActionView(actionId);
+  const view = { ...getActionView(actionId), actionId };
   if (window.matchMedia('(max-width: 850px)').matches) {
     showActionDialog(view);
   } else {
@@ -2169,6 +2784,32 @@ document.addEventListener('click', (event) => {
   if (settingChoice) {
     showToast(`${settingChoice.dataset.settingChoiceTitle}: ${settingChoice.dataset.settingChoice}`);
     settingChoice.closest('.action-dialog-backdrop')?.remove();
+    return;
+  }
+
+  if (event.target.closest('[data-start-voice-call]')) {
+    document.querySelector('.action-dialog-backdrop:not([data-voice-call-dialog])')?.remove();
+    startVoiceCall();
+    return;
+  }
+
+  if (event.target.closest('[data-voice-call-answer]')) {
+    answerVoiceCall();
+    return;
+  }
+
+  if (event.target.closest('[data-voice-call-reject]')) {
+    rejectVoiceCall();
+    return;
+  }
+
+  if (event.target.closest('[data-voice-call-end]')) {
+    endVoiceCall('Ended', 'Call ended.');
+    return;
+  }
+
+  if (event.target.closest('[data-voice-call-close]')) {
+    resetVoiceCall();
     return;
   }
 
@@ -2563,6 +3204,10 @@ document.addEventListener('visibilitychange', () => {
 });
 
 window.addEventListener('beforeunload', () => {
+  if (isVoiceCallActive()) {
+    endVoiceCall('Ended', 'Call ended.');
+  }
+  closeVoiceSocket();
   if (currentAuthUser) {
     setUserOnlineStatus(currentAuthUser, 'offline');
   }
@@ -2588,6 +3233,8 @@ function startFirebaseAuth() {
       resetApprovedChatLoadingState();
       subscribedConversationContactId = '';
       if (!user) {
+        resetVoiceCall();
+        closeVoiceSocket();
         authenticatedUsers = [];
         firebaseGroups = [];
         availableGroups = [];
@@ -2617,7 +3264,11 @@ function startFirebaseAuth() {
           currentUserProfile = profile;
           if (isCurrentUserApproved()) {
             startApprovedFamilyLists(user);
+            ensureVoiceSocket().catch((error) => {
+              console.warn('[Kids WhatsApp] Voice signalling unavailable', error);
+            });
           } else {
+            closeVoiceSocket();
             authenticatedUsers = [];
             firebaseGroups = [];
             availableGroups = [];

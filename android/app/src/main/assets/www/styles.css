@@ -1373,6 +1373,42 @@ img.profile-photo {
   background: #f0f2f5;
 }
 
+.voice-call-dialog {
+  gap: 10px;
+}
+
+.voice-call-dialog small {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.voice-call-dialog audio {
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.voice-call-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.voice-call-controls .detail-action {
+  width: auto;
+  min-width: 128px;
+  margin: 0;
+}
+
+.voice-secondary-action {
+  color: #29343a;
+  background: #edf2f7;
+  box-shadow: none;
+}
+
 .nested-settings {
   display: flex;
   flex-direction: column;
