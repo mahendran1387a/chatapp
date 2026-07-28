@@ -257,7 +257,10 @@ test('group creation writes a complete atomic ownership record with approved uid
   assert.match(firebase, /approvedProfile\.email !== normalizeEmail\(user\.email\)/);
   assert.match(firebase, /Signed-in Google account does not match the approved user record/);
   assert.match(firebase, /selectedMemberUids/);
-  assert.match(firebase, /creatorId: user\.uid/);
+  assert.doesNotMatch(firebase, /creatorId: user\.uid/);
+  assert.match(firebase, /createdBy: user\.uid/);
+  assert.match(firebase, /hostId: user\.uid/);
+  assert.match(firebase, /adminIds: \[user\.uid\]/);
   assert.match(firebase, /hostUid: user\.uid/);
   assert.match(firebase, /adminUids: \[user\.uid\]/);
   assert.match(firebase, /updatedAt: serverTimestamp\(\)/);
@@ -275,7 +278,7 @@ test('Firestore group creation rules match the complete group ownership schema w
   const rules = readFileSync(new URL('../firestore.rules', import.meta.url), 'utf8');
 
   assert.match(rules, /'creatorId'/);
-  assert.match(rules, /request\.resource\.data\.creatorId == request\.auth\.uid/);
+  assert.match(rules, /!\('creatorId' in request\.resource\.data\) \|\| request\.resource\.data\.creatorId == request\.auth\.uid/);
   assert.match(rules, /request\.resource\.data\.hostUid == request\.auth\.uid/);
   assert.match(rules, /request\.resource\.data\.adminUids is list/);
   assert.match(rules, /request\.resource\.data\.adminUids\.hasAny\(\[request\.auth\.uid\]\)/);

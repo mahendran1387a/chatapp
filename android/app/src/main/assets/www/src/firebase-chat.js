@@ -497,7 +497,6 @@ export async function createFirebaseGroup({ groupName, memberUids = [] }, user) 
     members,
     participants: members,
     createdBy: user.uid,
-    creatorId: user.uid,
     hostId: user.uid,
     hostUid: user.uid,
     adminIds: [user.uid],

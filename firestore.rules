@@ -273,7 +273,7 @@ service cloud.firestore {
         && request.resource.data.members.hasAny([request.auth.uid])
         && request.resource.data.participants.hasAny([request.auth.uid])
         && request.resource.data.createdBy == request.auth.uid
-        && request.resource.data.creatorId == request.auth.uid
+        && (!('creatorId' in request.resource.data) || request.resource.data.creatorId == request.auth.uid)
         && request.resource.data.hostId == request.auth.uid
         && request.resource.data.adminIds is list
         && request.resource.data.adminIds.hasAny([request.auth.uid])

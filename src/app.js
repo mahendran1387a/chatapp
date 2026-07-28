@@ -3225,7 +3225,13 @@ document.addEventListener('submit', (event) => {
         renderAll();
         showToast('Group created');
       })
-      .catch((error) => showFirebaseError(error, 'createGroup'));
+      .catch((error) => {
+        selectedGroupMemberIds = new Set();
+        activeContactMenuId = null;
+        closeContactMenu();
+        renderAll();
+        showFirebaseError(error, 'createGroup');
+      });
     return;
   }
 
