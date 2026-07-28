@@ -9,6 +9,7 @@ import {
   signOut
 } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js';
 import {
+  addDoc,
   arrayUnion,
   collection,
   deleteDoc,
