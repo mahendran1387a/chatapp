@@ -1591,7 +1591,9 @@ function getFilteredAuthenticatedUsers() {
 }
 
 function getGroupCandidateUsers() {
-  return filterAuthenticatedUsers(authenticatedUsers, currentAuthUser?.uid ?? '', '');
+  const currentUserEmail = getUserEmail(currentAuthUser).trim().toLowerCase();
+  return filterAuthenticatedUsers(authenticatedUsers, currentAuthUser?.uid ?? '', '')
+    .filter((user) => getUserEmail(user).trim().toLowerCase() !== currentUserEmail);
 }
 
 function renderAuthenticatedUserRows(users, emptyMessage) {
