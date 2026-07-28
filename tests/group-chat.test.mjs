@@ -235,6 +235,57 @@ test('Firebase group helpers and rules protect group membership and sender ident
   assert.match(rules, /validGroupMessage\(groupId\)/);
 });
 
+test('group creation waits for restored approval state after reload and reports Firebase create errors', () => {
+  for (const relativePath of appFiles) {
+    const app = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
+    const createHandler = app.slice(app.indexOf('const createGroupForm ='), app.indexOf('const editGroupForm ='));
+
+    assert.match(createHandler, /if \(!authReady \|\| chatsLoading \|\| !areApprovedChatListsReady\(\)\)/);
+    assert.match(createHandler, /Still loading your approved friends/);
+    assert.match(createHandler, /if \(!isCurrentUserApproved\(\)\)/);
+    assert.match(createHandler, /Your account is not approved yet/);
+    assert.match(createHandler, /currentUserEmail/);
+    assert.match(createHandler, /getUserEmail\(user\)\.trim\(\)\.toLowerCase\(\) !== currentUserEmail/);
+    assert.match(createHandler, /showFirebaseError\(error, 'createGroup'\)/);
+  }
+});
+
+test('group creation writes a complete atomic ownership record with approved uid and email checks', () => {
+  const firebase = readFileSync(new URL('../src/firebase-chat.js', import.meta.url), 'utf8');
+
+  assert.match(firebase, /const approvedProfile = await loadApprovedUser\(firebase, user\.uid\)/);
+  assert.match(firebase, /approvedProfile\.email !== normalizeEmail\(user\.email\)/);
+  assert.match(firebase, /Signed-in Google account does not match the approved user record/);
+  assert.match(firebase, /selectedMemberUids/);
+  assert.match(firebase, /creatorId: user\.uid/);
+  assert.match(firebase, /hostUid: user\.uid/);
+  assert.match(firebase, /adminUids: \[user\.uid\]/);
+  assert.match(firebase, /updatedAt: serverTimestamp\(\)/);
+  assert.match(firebase, /const groupRef = doc\(collection\(firebase\.db, 'groups'\)\)/);
+  assert.match(firebase, /const batch = writeBatch\(firebase\.db\)/);
+  assert.match(firebase, /batch\.set\(groupRef, group\)/);
+  assert.match(firebase, /await batch\.commit\(\)/);
+  assert.match(firebase, /permission-denied/);
+  assert.match(firebase, /currentUserEmail: normalizeEmail\(user\.email\)/);
+  assert.match(firebase, /selectedMemberUids: memberUids/);
+  assert.doesNotMatch(firebase, /await addDoc\(collection\(firebase\.db, 'groups'\), group\)/);
+});
+
+test('Firestore group creation rules match the complete group ownership schema without opening unused collections', () => {
+  const rules = readFileSync(new URL('../firestore.rules', import.meta.url), 'utf8');
+
+  assert.match(rules, /'creatorId'/);
+  assert.match(rules, /request\.resource\.data\.creatorId == request\.auth\.uid/);
+  assert.match(rules, /request\.resource\.data\.hostUid == request\.auth\.uid/);
+  assert.match(rules, /request\.resource\.data\.adminUids is list/);
+  assert.match(rules, /request\.resource\.data\.adminUids\.hasAny\(\[request\.auth\.uid\]\)/);
+  assert.match(rules, /request\.resource\.data\.updatedAt is timestamp/);
+  assert.match(rules, /match \/groupMembers\/\{document=\*\*\}/);
+  assert.match(rules, /match \/invitations\/\{document=\*\*\}/);
+  assert.match(rules, /match \/approvedUsers\/\{document=\*\*\}/);
+  assert.match(rules, /allow read, write: if false/);
+});
+
 test('group delete validates manager uid and removes messages before the group document', () => {
   const firebase = readFileSync(new URL('../src/firebase-chat.js', import.meta.url), 'utf8');
   const app = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
@@ -364,8 +415,17 @@ test('group join requests persist in Firestore and managers can approve or rejec
   assert.match(firebase, /export function subscribeDiscoverableGroups/);
   assert.match(firebase, /export function subscribeOwnGroupJoinRequests/);
   assert.match(firebase, /export function subscribeManagedGroupJoinRequests/);
+  assert.match(firebase, /where\('managerIds', 'array-contains', user\.uid\)/);
+  assert.match(firebase, /where\('status', '==', 'pending'\)/);
+  assert.doesNotMatch(firebase, /where\('groupId', '==', group\.id\)/);
   assert.match(firebase, /export async function approveGroupJoinRequest/);
   assert.match(firebase, /export async function rejectGroupJoinRequest/);
+  assert.match(firebase, /const creatorUid = getGroupCreatorUid\(groupData\)/);
+  assert.match(firebase, /const hostId = getGroupHostUid\(groupData\)/);
+  assert.match(firebase, /const managerIds = getJoinRequestManagerIds\(groupData\)/);
+  assert.match(firebase, /managerIds/);
+  assert.match(firebase, /console\.info\('\[Kids WhatsApp\] Creating group join request'/);
+  assert.match(firebase, /console\.info\('\[Kids WhatsApp\] Group join request saved'/);
   assert.match(firebase, /writeBatch\(firebase\.db\)/);
   assert.match(firebase, /new Set\(\[\.\.\.getExistingGroupMembers\(group\), request\.uid\]\)/);
   assert.match(firebase, /memberIds: nextMembers/);
@@ -387,11 +447,16 @@ test('group join requests persist in Firestore and managers can approve or rejec
   assert.match(app, /Group join approved/);
   assert.match(app, /Group join rejected/);
   assert.match(app, /restartManagedGroupJoinRequestSubscription/);
+  assert.doesNotMatch(app, /!user\?\.uid \|\| !firebaseGroups\.length/);
+  assert.match(app, /restartManagedGroupJoinRequestSubscription\(user\)/);
 
   assert.match(rules, /function validGroupMembershipUpdate\(\)/);
   assert.match(rules, /groupManager\(resource\.data\)/);
   assert.match(rules, /request\.resource\.data\.memberIds\.hasAll\(resource\.data\.memberIds\)/);
   assert.match(rules, /match \/groupJoinRequests\/\{requestId\}/);
+  assert.match(rules, /function joinRequestManager\(data\)/);
+  assert.match(rules, /request\.resource\.data\.managerIds is list/);
+  assert.match(rules, /request\.resource\.data\.hostId == get\(\/databases\/\$\(database\)\/documents\/groups\/\$\(request\.resource\.data\.groupId\)\)\.data\.hostId/);
   assert.match(rules, /function validGroupJoinRequestCreate\(requestId\)/);
   assert.match(rules, /function validGroupJoinDecision\(\)/);
   assert.match(rules, /request\.resource\.data\.status == 'pending'/);

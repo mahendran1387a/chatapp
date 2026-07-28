@@ -166,11 +166,46 @@ function sendVoiceJson(socket, payload) {
   }
 }
 
-function addVoiceClient(clientsByUid, socket, uid) {
+function createVoiceSocketId() {
+  return `voice-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function getVoicePresenceSnapshot(clientsByUid) {
+  return [...clientsByUid.entries()]
+    .map(([uid, sockets]) => {
+      const openSockets = [...sockets].filter((socket) => socket.readyState === WebSocket.OPEN);
+      return {
+        uid,
+        socketCount: openSockets.length,
+        browserSessionIds: [...new Set(openSockets.map((socket) => socket.browserSessionId).filter(Boolean))],
+        socketIds: openSockets.map((socket) => socket.voiceSocketId).filter(Boolean),
+        lastSeenAt: Math.max(0, ...openSockets.map((socket) => socket.lastSeenAt ?? 0))
+      };
+    })
+    .filter((entry) => entry.socketCount > 0);
+}
+
+function broadcastVoicePresence(wss, clientsByUid) {
+  const presence = getVoicePresenceSnapshot(clientsByUid);
+  const payload = {
+    type: 'voice-presence',
+    onlineUids: presence.map((entry) => entry.uid),
+    presence,
+    serverTime: Date.now()
+  };
+  for (const client of wss.clients) {
+    if (client.userUid) sendVoiceJson(client, payload);
+  }
+}
+
+function addVoiceClient(clientsByUid, socket, uid, browserSessionId = '') {
   const existing = clientsByUid.get(uid) ?? new Set();
   existing.add(socket);
   clientsByUid.set(uid, existing);
   socket.userUid = uid;
+  socket.voiceSocketId = socket.voiceSocketId ?? createVoiceSocketId();
+  socket.browserSessionId = browserSessionId;
+  socket.lastSeenAt = Date.now();
 }
 
 function removeVoiceClient(clientsByUid, socket) {
@@ -179,6 +214,18 @@ function removeVoiceClient(clientsByUid, socket) {
   if (!clients) return;
   clients.delete(socket);
   if (!clients.size) clientsByUid.delete(socket.userUid);
+  socket.userUid = '';
+}
+
+function getOpenVoiceTargets(clientsByUid, uid) {
+  const clients = clientsByUid.get(uid);
+  if (!clients) return [];
+  const openTargets = [...clients].filter((client) => client.readyState === WebSocket.OPEN);
+  for (const client of [...clients]) {
+    if (client.readyState !== WebSocket.OPEN) clients.delete(client);
+  }
+  if (!clients.size) clientsByUid.delete(uid);
+  return openTargets;
 }
 
 function handleVoiceSignal(clientsByUid, socket, message) {
@@ -186,6 +233,7 @@ function handleVoiceSignal(clientsByUid, socket, message) {
     sendVoiceJson(socket, { type: 'voice-error', message: 'Sign in before starting a call.' });
     return;
   }
+  socket.lastSeenAt = Date.now();
   if (message.senderUid !== socket.userUid) {
     sendVoiceJson(socket, { type: 'voice-error', message: 'Caller identity did not match the signed-in user.' });
     return;
@@ -196,8 +244,8 @@ function handleVoiceSignal(clientsByUid, socket, message) {
   }
 
   const recipientUid = typeof message.recipientUid === 'string' ? message.recipientUid.trim() : '';
-  const targets = clientsByUid.get(recipientUid);
-  if (!recipientUid || !targets?.size) {
+  const targets = recipientUid ? getOpenVoiceTargets(clientsByUid, recipientUid) : [];
+  if (!recipientUid || !targets.length) {
     sendVoiceJson(socket, {
       type: 'recipient-offline',
       callId: message.callId,
@@ -238,6 +286,7 @@ function setupVoiceSignalling(server) {
           sendVoiceJson(socket, { type: 'voice-error', message: 'Voice connection needs a signed-in user.' });
           return;
         }
+        const browserSessionId = typeof message.sessionId === 'string' ? message.sessionId.trim() : '';
         try {
           await verifyVoiceHello(uid, message.idToken);
         } catch (error) {
@@ -250,16 +299,32 @@ function setupVoiceSignalling(server) {
           return;
         }
         removeVoiceClient(clientsByUid, socket);
-        addVoiceClient(clientsByUid, socket, uid);
-        sendVoiceJson(socket, { type: 'voice-ready', uid });
+        addVoiceClient(clientsByUid, socket, uid, browserSessionId);
+        const presence = getVoicePresenceSnapshot(clientsByUid);
+        sendVoiceJson(socket, {
+          type: 'voice-ready',
+          uid,
+          socketId: socket.voiceSocketId,
+          sessionId: socket.browserSessionId,
+          socketCount: clientsByUid.get(uid)?.size ?? 0,
+          onlineUids: presence.map((entry) => entry.uid),
+          presence
+        });
+        broadcastVoicePresence(wss, clientsByUid);
         return;
       }
 
       handleVoiceSignal(clientsByUid, socket, message);
     });
 
-    socket.on('close', () => removeVoiceClient(clientsByUid, socket));
-    socket.on('error', () => removeVoiceClient(clientsByUid, socket));
+    socket.on('close', () => {
+      removeVoiceClient(clientsByUid, socket);
+      broadcastVoicePresence(wss, clientsByUid);
+    });
+    socket.on('error', () => {
+      removeVoiceClient(clientsByUid, socket);
+      broadcastVoicePresence(wss, clientsByUid);
+    });
   });
 }
 

@@ -258,7 +258,7 @@ service cloud.firestore {
 
     function validGroupCreate() {
       return approvedUser(request.auth.uid)
-        && request.resource.data.keys().hasOnly(['groupName', 'type', 'memberIds', 'members', 'participants', 'createdBy', 'createdAt', 'updatedAt', 'hostId', 'adminIds', 'hostUid', 'adminUids'])
+        && request.resource.data.keys().hasOnly(['groupName', 'type', 'memberIds', 'members', 'participants', 'createdBy', 'creatorId', 'createdAt', 'updatedAt', 'hostId', 'adminIds', 'hostUid', 'adminUids'])
         && request.resource.data.groupName is string
         && request.resource.data.type == 'group'
         && request.resource.data.memberIds is list
@@ -273,11 +273,15 @@ service cloud.firestore {
         && request.resource.data.members.hasAny([request.auth.uid])
         && request.resource.data.participants.hasAny([request.auth.uid])
         && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.creatorId == request.auth.uid
         && request.resource.data.hostId == request.auth.uid
         && request.resource.data.adminIds is list
         && request.resource.data.adminIds.hasAny([request.auth.uid])
-        && (!('hostUid' in request.resource.data) || request.resource.data.hostUid == request.auth.uid)
-        && (!('adminUids' in request.resource.data) || request.resource.data.adminUids is list);
+        && request.resource.data.hostUid == request.auth.uid
+        && request.resource.data.adminUids is list
+        && request.resource.data.adminUids.hasAny([request.auth.uid])
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp;
     }
 
     function validGroupUpdate() {
@@ -294,7 +298,7 @@ service cloud.firestore {
     function validGroupMembershipUpdate() {
       return approvedUser(request.auth.uid)
         && groupManager(resource.data)
-        && request.resource.data.keys().hasOnly(['groupName', 'type', 'memberIds', 'members', 'participants', 'createdBy', 'createdAt', 'updatedAt', 'hostId', 'adminIds', 'hostUid', 'adminUids'])
+        && request.resource.data.keys().hasOnly(['groupName', 'type', 'memberIds', 'members', 'participants', 'createdBy', 'creatorId', 'createdAt', 'updatedAt', 'hostId', 'adminIds', 'hostUid', 'adminUids'])
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds', 'members', 'participants', 'updatedAt'])
         && request.resource.data.memberIds is list
         && request.resource.data.members is list
@@ -307,6 +311,7 @@ service cloud.firestore {
         && request.resource.data.groupName == resource.data.groupName
         && request.resource.data.type == resource.data.type
         && request.resource.data.createdBy == resource.data.createdBy
+        && (!('creatorId' in resource.data) || request.resource.data.creatorId == resource.data.creatorId)
         && request.resource.data.createdAt == resource.data.createdAt
         && (!('hostId' in resource.data) || request.resource.data.hostId == resource.data.hostId)
         && (!('adminIds' in resource.data) || request.resource.data.adminIds == resource.data.adminIds)
@@ -336,6 +341,10 @@ service cloud.firestore {
         'email',
         'displayName',
         'photoURL',
+        'createdBy',
+        'hostId',
+        'adminIds',
+        'managerIds',
         'status',
         'requestedAt',
         'updatedAt',
@@ -344,10 +353,20 @@ service cloud.firestore {
       ];
     }
 
+    function joinRequestManager(data) {
+      return (
+        (('managerIds' in data) && data.managerIds is list && data.managerIds.hasAny([request.auth.uid])) ||
+        (('createdBy' in data) && data.createdBy == request.auth.uid) ||
+        (('hostId' in data) && data.hostId == request.auth.uid) ||
+        (('adminIds' in data) && data.adminIds is list && data.adminIds.hasAny([request.auth.uid]))
+      );
+    }
+
     function canReadGroupJoinRequest() {
       return approvedUser(request.auth.uid)
         && (
           resource.data.uid == request.auth.uid ||
+          joinRequestManager(resource.data) ||
           (
             exists(/databases/$(database)/documents/groups/$(resource.data.groupId))
             && groupManager(get(/databases/$(database)/documents/groups/$(resource.data.groupId)).data)
@@ -367,6 +386,15 @@ service cloud.firestore {
         && request.resource.data.displayName is string
         && request.resource.data.photoURL is string
         && request.resource.data.groupName is string
+        && request.resource.data.createdBy is string
+        && request.resource.data.hostId is string
+        && request.resource.data.adminIds is list
+        && request.resource.data.managerIds is list
+        && request.resource.data.managerIds.size() > 0
+        && request.resource.data.createdBy == get(/databases/$(database)/documents/groups/$(request.resource.data.groupId)).data.createdBy
+        && request.resource.data.hostId == get(/databases/$(database)/documents/groups/$(request.resource.data.groupId)).data.hostId
+        && request.resource.data.adminIds == get(/databases/$(database)/documents/groups/$(request.resource.data.groupId)).data.adminIds
+        && request.resource.data.managerIds.hasAny([get(/databases/$(database)/documents/groups/$(request.resource.data.groupId)).data.hostId])
         && request.resource.data.status == 'pending';
     }
 
@@ -374,7 +402,7 @@ service cloud.firestore {
       return approvedUser(request.auth.uid)
         && resource.data.groupId is string
         && exists(/databases/$(database)/documents/groups/$(resource.data.groupId))
-        && groupManager(get(/databases/$(database)/documents/groups/$(resource.data.groupId)).data)
+        && (joinRequestManager(resource.data) || groupManager(get(/databases/$(database)/documents/groups/$(resource.data.groupId)).data))
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'decidedBy', 'decidedAt', 'updatedAt'])
         && request.resource.data.groupId == resource.data.groupId
         && request.resource.data.groupName == resource.data.groupName
@@ -382,6 +410,10 @@ service cloud.firestore {
         && request.resource.data.email == resource.data.email
         && request.resource.data.displayName == resource.data.displayName
         && request.resource.data.photoURL == resource.data.photoURL
+        && (!('createdBy' in resource.data) || request.resource.data.createdBy == resource.data.createdBy)
+        && (!('hostId' in resource.data) || request.resource.data.hostId == resource.data.hostId)
+        && (!('adminIds' in resource.data) || request.resource.data.adminIds == resource.data.adminIds)
+        && (!('managerIds' in resource.data) || request.resource.data.managerIds == resource.data.managerIds)
         && request.resource.data.status in ['approved', 'rejected']
         && request.resource.data.decidedBy == request.auth.uid;
     }
@@ -436,6 +468,18 @@ service cloud.firestore {
       allow create: if validGroupJoinRequestCreate(requestId);
       allow update: if validGroupJoinRequestCreate(requestId) || validGroupJoinDecision();
       allow delete: if false;
+    }
+
+    match /groupMembers/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /invitations/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /approvedUsers/{document=**} {
+      allow read, write: if false;
     }
 
     match /{document=**} {

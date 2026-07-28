@@ -9,7 +9,6 @@ import {
   signOut
 } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js';
 import {
-  addDoc,
   arrayUnion,
   collection,
   deleteDoc,
@@ -405,6 +404,32 @@ function getGroupJoinRequestId(groupId, uid) {
   return `${groupId}_${uid}`;
 }
 
+function getGroupCreatorUid(group) {
+  return normalizeManagerUid(
+    group?.createdBy ?? group?.creatorId ?? group?.creatorUid ?? group?.ownerId ?? group?.ownerUid
+  );
+}
+
+function getGroupHostUid(group) {
+  return normalizeManagerUid(group?.hostId ?? group?.hostUid ?? getGroupCreatorUid(group));
+}
+
+function getGroupAdminUids(group) {
+  return [...new Set([
+    group?.adminId,
+    group?.adminUid,
+    ...(Array.isArray(group?.adminIds) ? group.adminIds : []),
+    ...(Array.isArray(group?.adminUids) ? group.adminUids : [])
+  ].map(normalizeManagerUid).filter(Boolean))];
+}
+
+function getJoinRequestManagerIds(group) {
+  const creatorUid = getGroupCreatorUid(group);
+  const hostUid = getGroupHostUid(group);
+  const adminUids = getGroupAdminUids(group);
+  return [...new Set([creatorUid, hostUid, ...adminUids, ...getGroupManagerUids(group)].filter(Boolean))];
+}
+
 function mapGroupSnapshot(snapshot) {
   return snapshot.docs
     .map((item) => ({ id: item.id, ...item.data() }))
@@ -454,7 +479,13 @@ export async function createFirebaseGroup({ groupName, memberUids = [] }, user) 
   if (!cleanName) throw new Error('Give your group a name.');
   if (memberUids.length < 1) throw new Error('Choose at least 1 friend for a group.');
 
-  const members = normalizeGroupMembers(memberUids, user.uid);
+  const approvedProfile = await loadApprovedUser(firebase, user.uid);
+  if (approvedProfile.email !== normalizeEmail(user.email)) {
+    throw new Error('Signed-in Google account does not match the approved user record. Please log out and sign in again.');
+  }
+
+  const selectedMemberUids = [...new Set(memberUids.filter((uid) => typeof uid === 'string' && uid.trim()))];
+  const members = normalizeGroupMembers(selectedMemberUids, user.uid);
   if (members.length < 2) throw new Error('Choose at least 1 friend for a group.');
   await loadApprovedGroupMembers(firebase, members);
 
@@ -465,23 +496,43 @@ export async function createFirebaseGroup({ groupName, memberUids = [] }, user) 
     members,
     participants: members,
     createdBy: user.uid,
+    creatorId: user.uid,
     hostId: user.uid,
+    hostUid: user.uid,
     adminIds: [user.uid],
-    createdAt: serverTimestamp()
+    adminUids: [user.uid],
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
   };
-  const createPath = 'groups/(auto-id)';
-  console.info('[Kids WhatsApp] Creating group', { path: createPath, data: group });
+  const groupRef = doc(collection(firebase.db, 'groups'));
+  console.info('[Kids WhatsApp] Creating group', {
+    path: groupRef.path,
+    currentUserUid: user.uid,
+    currentUserEmail: normalizeEmail(user.email),
+    selectedMemberUids: memberUids,
+    data: group
+  });
   try {
-    const groupRef = await addDoc(collection(firebase.db, 'groups'), group);
+    const batch = writeBatch(firebase.db);
+    batch.set(groupRef, group);
+    await batch.commit();
     console.info('[Kids WhatsApp] Created group', { path: groupRef.path, id: groupRef.id });
     return { id: groupRef.id, ...group, createdAt: Date.now() };
   } catch (error) {
     console.error('[Kids WhatsApp] Group create failed', {
-      path: createPath,
+      path: groupRef.path,
+      currentUserUid: user.uid,
+      currentUserEmail: normalizeEmail(user.email),
+      selectedMemberUids: memberUids,
       data: group,
-      code: error.code,
-      message: error.message
+      code: error?.code,
+      message: error?.message
     });
+    if (error?.code === 'permission-denied' || error?.message?.includes('Missing or insufficient permissions')) {
+      throw new Error(
+        'Firebase blocked group creation. Publish the latest Firestore rules and confirm this account is approved.'
+      );
+    }
     throw error;
   }
 }
@@ -740,37 +791,48 @@ export function subscribeOwnGroupJoinRequests(currentUid, onRequests, onError) {
 
 export function subscribeManagedGroupJoinRequests(groups = [], user, onRequests, onError) {
   const firebase = ensureFirebase();
-  const managedGroups = groups.filter((group) => canManageFirebaseGroup(group, user?.uid));
-  if (!firebase || !user?.uid || !managedGroups.length) {
+  if (!firebase || !user?.uid) {
     onRequests([]);
     return () => {};
   }
 
-  const requestsByGroup = new Map();
-  const emitRequests = () => {
-    const requests = [...requestsByGroup.values()]
-      .flat()
-      .filter((request) => request.status === 'pending')
-      .sort((first, second) => {
+  const managedGroupIds = groups
+    .filter((group) => canManageFirebaseGroup(group, user.uid))
+    .map((group) => group.id)
+    .filter(Boolean);
+  console.info('[Kids WhatsApp] Listening for managed group join requests', {
+    currentUserUid: user.uid,
+    managedGroupIds
+  });
+
+  return onSnapshot(
+    query(
+      collection(firebase.db, 'groupJoinRequests'),
+      where('managerIds', 'array-contains', user.uid),
+      where('status', '==', 'pending')
+    ),
+    (snapshot) => {
+      const requests = mapJoinRequestSnapshot(snapshot).sort((first, second) => {
         const firstTime = first.requestedAt?.toMillis?.() ?? first.requestedAt ?? 0;
         const secondTime = second.requestedAt?.toMillis?.() ?? second.requestedAt ?? 0;
         return secondTime - firstTime;
       });
-    onRequests(requests);
-  };
-
-  const unsubscribers = managedGroups.map((group) =>
-    onSnapshot(
-      query(collection(firebase.db, 'groupJoinRequests'), where('groupId', '==', group.id)),
-      (snapshot) => {
-        requestsByGroup.set(group.id, mapJoinRequestSnapshot(snapshot));
-        emitRequests();
-      },
-      (error) => onError?.(error)
-    )
+      console.info('[Kids WhatsApp] Managed group join requests updated', {
+        currentUserUid: user.uid,
+        count: requests.length,
+        requestIds: requests.map((request) => request.id)
+      });
+      onRequests(requests);
+    },
+    (error) => {
+      console.error('[Kids WhatsApp] Managed group join request listener failed', {
+        currentUserUid: user.uid,
+        code: error?.code,
+        message: error?.message
+      });
+      onError?.(error);
+    }
   );
-
-  return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
 }
 
 export async function requestGroupJoin(group, user) {
@@ -780,7 +842,7 @@ export async function requestGroupJoin(group, user) {
   if (!user?.uid) throw new Error('Please sign in again before asking to join a group.');
   if (!groupId) throw new Error('Choose a group first.');
 
-  await loadApprovedUser(firebase, user.uid);
+  const approvedProfile = await loadApprovedUser(firebase, user.uid);
   const groupRef = doc(firebase.db, 'groups', groupId);
   const groupSnapshot = await getDoc(groupRef);
   const groupData = groupSnapshot.exists() ? { id: groupSnapshot.id, ...groupSnapshot.data() } : null;
@@ -791,7 +853,24 @@ export async function requestGroupJoin(group, user) {
   const existingRequest = await getDoc(requestRef);
   const existingData = existingRequest.exists() ? existingRequest.data() : null;
   if (existingData?.status === 'pending') {
-    throw new Error('You already asked to join. Waiting for host.');
+    console.info('[Kids WhatsApp] Duplicate group join request ignored', {
+      path: requestRef.path,
+      groupId,
+      uid: user.uid,
+      status: existingData.status
+    });
+    return { id: requestRef.id, ...existingData, duplicate: true };
+  }
+  if (existingData?.status === 'approved') {
+    return { id: requestRef.id, ...existingData };
+  }
+
+  const creatorUid = getGroupCreatorUid(groupData);
+  const hostId = getGroupHostUid(groupData);
+  const adminIds = getGroupAdminUids(groupData);
+  const managerIds = getJoinRequestManagerIds(groupData);
+  if (!hostId || !managerIds.length) {
+    throw new Error('This group is missing its host details. Ask the group creator to recreate it.');
   }
 
   const request = {
@@ -799,13 +878,45 @@ export async function requestGroupJoin(group, user) {
     groupName: groupData.groupName ?? groupData.name ?? 'Family Group',
     uid: user.uid,
     email: normalizeEmail(user.email),
-    displayName: user.displayName ?? user.email ?? 'Google user',
-    photoURL: user.photoURL ?? '',
+    displayName: user.displayName ?? approvedProfile.displayName ?? user.email ?? 'Google user',
+    photoURL: user.photoURL ?? approvedProfile.photoURL ?? '',
+    createdBy: creatorUid,
+    hostId,
+    adminIds,
+    managerIds,
     status: 'pending',
     requestedAt: serverTimestamp(),
-    updatedAt: serverTimestamp()
+    updatedAt: serverTimestamp(),
+    decidedBy: '',
+    decidedAt: null
   };
-  await setDoc(requestRef, request, { merge: true });
+  console.info('[Kids WhatsApp] Creating group join request', {
+    path: requestRef.path,
+    groupId,
+    hostId,
+    managerIds,
+    requesterUid: user.uid,
+    requesterEmail: normalizeEmail(user.email)
+  });
+  try {
+    await setDoc(requestRef, request, { merge: true });
+    console.info('[Kids WhatsApp] Group join request saved', {
+      path: requestRef.path,
+      groupId,
+      hostId,
+      requesterUid: user.uid
+    });
+  } catch (error) {
+    console.error('[Kids WhatsApp] Group join request failed', {
+      path: requestRef.path,
+      groupId,
+      hostId,
+      requesterUid: user.uid,
+      code: error?.code,
+      message: error?.message
+    });
+    throw error;
+  }
   return { id: requestRef.id, ...request };
 }
 
