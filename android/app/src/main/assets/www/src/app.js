@@ -466,7 +466,16 @@ function getVoiceRemoteAudio() {
 function syncVoiceRemoteAudio() {
   const audio = getVoiceRemoteAudio();
   if (audio && voiceRemoteStream) {
-    audio.srcObject = voiceRemoteStream;
+    if (audio.srcObject !== voiceRemoteStream) {
+      audio.srcObject = voiceRemoteStream;
+    }
+    audio.muted = false;
+    audio.volume = 1;
+    audio.play?.().catch((error) => {
+      console.warn('[Kids WhatsApp] Remote voice audio playback needs a tap', {
+        errorName: error?.name ?? 'UnknownError'
+      });
+    });
   }
 }
 
@@ -866,6 +875,31 @@ function showVoiceMicrophoneError(error, contact, retryAction = 'start') {
   });
 }
 
+function getLiveVoiceAudioTracks(stream) {
+  return stream?.getAudioTracks?.()
+    .filter((track) => track.readyState === 'live' && track.enabled !== false) ?? [];
+}
+
+function attachLocalVoiceTracks(peer, localStream) {
+  const tracks = getLiveVoiceAudioTracks(localStream);
+  if (!tracks.length) {
+    throw new Error('Microphone is open, but no live audio track is being sent. Check the microphone and try again.');
+  }
+  tracks.forEach((track) => peer.addTrack(track, localStream));
+  console.info('[Kids WhatsApp] Attached local voice tracks', {
+    audioTracks: tracks.length,
+    trackStates: tracks.map((track) => track.readyState)
+  });
+}
+
+function addRemoteVoiceTrack(track) {
+  if (!track || track.kind !== 'audio') return;
+  const existingIds = new Set(voiceRemoteStream.getTracks().map((existingTrack) => existingTrack.id));
+  if (!existingIds.has(track.id)) {
+    voiceRemoteStream.addTrack(track);
+  }
+}
+
 function createVoicePeerConnection(callId, recipientUid) {
   voiceRemoteStream = new MediaStream();
   const peer = new RTCPeerConnection({ iceServers: voiceCallIceServers });
@@ -873,10 +907,15 @@ function createVoicePeerConnection(callId, recipientUid) {
 
   peer.addEventListener('track', (event) => {
     const [remoteStream] = event.streams;
-    if (remoteStream) {
-      remoteStream.getTracks().forEach((track) => voiceRemoteStream.addTrack(track));
-      syncVoiceRemoteAudio();
-    }
+    const tracks = remoteStream?.getAudioTracks?.().length
+      ? remoteStream.getAudioTracks()
+      : [event.track].filter(Boolean);
+    tracks.forEach(addRemoteVoiceTrack);
+    console.info('[Kids WhatsApp] Received remote voice tracks', {
+      audioTracks: voiceRemoteStream.getAudioTracks().length,
+      trackIds: voiceRemoteStream.getAudioTracks().map((track) => track.id)
+    });
+    syncVoiceRemoteAudio();
   });
 
   peer.addEventListener('icecandidate', (event) => {
@@ -964,6 +1003,7 @@ async function startVoiceCall() {
     return;
   }
 
+  resetVoiceCall();
   let localStream;
   try {
     localStream = await getVoiceLocalStream();
@@ -971,8 +1011,6 @@ async function startVoiceCall() {
     showVoiceMicrophoneError(error, contact, 'start');
     return;
   }
-
-  resetVoiceCall();
   const callId = createVoiceCallId();
   setVoiceCallState({
     status: 'Calling',
@@ -987,7 +1025,7 @@ async function startVoiceCall() {
   try {
     await ensureVoiceSocket();
     const peer = createVoicePeerConnection(callId, contact.uid);
-    localStream.getTracks().forEach((track) => peer.addTrack(track, localStream));
+    attachLocalVoiceTracks(peer, localStream);
     const offer = await peer.createOffer();
     await peer.setLocalDescription(offer);
     sendVoiceSignal({
@@ -1021,7 +1059,7 @@ async function answerVoiceCall() {
   try {
     await ensureVoiceSocket();
     const peer = createVoicePeerConnection(callId, recipientUid);
-    localStream.getTracks().forEach((track) => peer.addTrack(track, localStream));
+    attachLocalVoiceTracks(peer, localStream);
     await peer.setRemoteDescription(new RTCSessionDescription(pendingOffer));
     await addPendingVoiceCandidates();
     const answer = await peer.createAnswer();

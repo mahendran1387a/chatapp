@@ -45,6 +45,10 @@ test('microphone permission is requested from the click path before call signall
     const answerCode = app.slice(app.indexOf('async function answerVoiceCall()'), app.indexOf('function rejectVoiceCall()'));
 
     assert.ok(
+      startCode.indexOf('resetVoiceCall()') < startCode.indexOf('await getVoiceLocalStream()'),
+      'outgoing calls must reset old call state before opening the microphone so cleanup does not stop the new stream'
+    );
+    assert.ok(
       startCode.indexOf('await getVoiceLocalStream()') < startCode.indexOf('await ensureVoiceSocket()'),
       'outgoing calls must get microphone permission before signalling starts'
     );
@@ -56,6 +60,24 @@ test('microphone permission is requested from the click path before call signall
       answerCode.indexOf('await getVoiceLocalStream()') < answerCode.indexOf('await ensureVoiceSocket()'),
       'answering calls must get microphone permission before sending an answer'
     );
+  }
+});
+
+test('voice calls attach live local tracks and tolerate mobile remote track events', () => {
+  for (const relativePath of appFiles) {
+    const app = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
+
+    assert.match(app, /function getLiveVoiceAudioTracks\(stream\)/);
+    assert.match(app, /track\.readyState === 'live'/);
+    assert.match(app, /function attachLocalVoiceTracks\(peer, localStream\)/);
+    assert.match(app, /throw new Error\('Microphone is open, but no live audio track is being sent/);
+    assert.match(app, /attachLocalVoiceTracks\(peer, localStream\)/);
+    assert.doesNotMatch(app, /localStream\.getTracks\(\)\.forEach\(\(track\) => peer\.addTrack\(track, localStream\)\)/);
+    assert.match(app, /function addRemoteVoiceTrack\(track\)/);
+    assert.match(app, /remoteStream\?\.getAudioTracks\?\.\(\)\.length/);
+    assert.match(app, /\[event\.track\]\.filter\(Boolean\)/);
+    assert.match(app, /audio\.play\?\.\(\)\.catch/);
+    assert.match(app, /Remote voice audio playback needs a tap/);
   }
 });
 
