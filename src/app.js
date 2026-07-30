@@ -237,6 +237,21 @@ const profileOwnershipLabels = {
 const quickEmojiValues = ['😀', '😂', '🎮', '🚀', '🦄', '🍕', '⚽'];
 const quickEmojiLabel = '😀 😂 🎮 🚀 🦄 🍕 ⚽';
 
+const stickerTokenPrefix = '[[kw-sticker:';
+const stickerTokenSuffix = ']]';
+const stickerCatalog = [
+  { id: 'care-heart', label: 'Care heart', icon: String.fromCodePoint(0x1f496), motion: 'pulse' },
+  { id: 'car', label: 'Car', icon: String.fromCodePoint(0x1f697), motion: 'drive' },
+  { id: 'rocket', label: 'Rocket', icon: String.fromCodePoint(0x1f680), motion: 'float' },
+  { id: 'unicorn', label: 'Unicorn', icon: String.fromCodePoint(0x1f984), motion: 'bounce' },
+  { id: 'pizza', label: 'Pizza', icon: String.fromCodePoint(0x1f355), motion: 'wiggle' },
+  { id: 'game', label: 'Game', icon: String.fromCodePoint(0x1f3ae), motion: 'tilt' },
+  { id: 'football', label: 'Football', icon: String.fromCodePoint(0x26bd), motion: 'spin' },
+  { id: 'star', label: 'Star', icon: String.fromCodePoint(0x2b50), motion: 'sparkle' }
+];
+const stickerMap = new Map(stickerCatalog.map((sticker) => [sticker.id, sticker]));
+const stickerPickerLabel = 'Kid-safe stickers';
+
 const voiceCallTimeoutMs = 30000;
 const voiceCallIceServers = getVoiceCallIceServers();
 const voiceCallStateLabels = ['Calling', 'Ringing', 'Connected', 'Failed', 'Ended'];
@@ -1278,6 +1293,66 @@ function insertEmojiIntoMessage(input, emoji) {
   input.focus();
 }
 
+function getStickerToken(stickerId) {
+  return `${stickerTokenPrefix}${stickerId}${stickerTokenSuffix}`;
+}
+
+function getStickerFromText(text) {
+  const value = String(text ?? '').trim();
+  if (!value.startsWith(stickerTokenPrefix) || !value.endsWith(stickerTokenSuffix)) return null;
+  const stickerId = value.slice(stickerTokenPrefix.length, -stickerTokenSuffix.length);
+  return stickerMap.get(stickerId) ?? null;
+}
+
+function renderStickerMessage(text) {
+  const sticker = getStickerFromText(text);
+  if (!sticker) return escapeHtml(text);
+  return `
+    <span class="sticker-message sticker-motion-${escapeAttribute(sticker.motion)}" role="img" aria-label="${escapeAttribute(sticker.label)}">
+      <span class="sticker-art">${escapeHtml(sticker.icon)}</span>
+      <span class="sticker-caption">${escapeHtml(sticker.label)}</span>
+    </span>
+  `;
+}
+
+function getStickerPreviewText(text) {
+  const sticker = getStickerFromText(text);
+  return sticker ? `${sticker.icon} ${sticker.label} sticker` : text;
+}
+
+function renderStickerPickerButtons() {
+  return stickerCatalog
+    .map((sticker) => `
+      <button type="button" data-sticker-id="${escapeAttribute(sticker.id)}" aria-label="Send ${escapeAttribute(sticker.label)} sticker">
+        <span class="sticker-preview">${escapeHtml(sticker.icon)}</span>
+        <span>${escapeHtml(sticker.label)}</span>
+      </button>
+    `)
+    .join('');
+}
+
+async function sendStickerMessage(stickerId) {
+  if (!requireAuth()) return;
+  if (!stickerMap.has(stickerId)) return;
+  const activeContact = getActiveContact(state);
+  if (!activeContact?.uid && !activeContact?.groupId) {
+    showToast('Choose a signed-in friend or group first.');
+    return;
+  }
+  try {
+    const token = getStickerToken(stickerId);
+    if (activeContact.groupId) {
+      await sendFirebaseGroupMessage(activeContact.groupId, token, currentAuthUser);
+    } else {
+      await sendFirebaseMessage(activeContact.uid, token, currentAuthUser);
+    }
+  } catch (error) {
+    showFirebaseError(error);
+    return;
+  }
+  renderAll();
+}
+
 function renderUserPhoto(user, extraClass = '') {
   if (user?.photoURL) {
     return `<img class="avatar ${extraClass}" src="${escapeAttribute(user.photoURL)}" alt="${escapeAttribute(getUserName(user))} profile photo" />`;
@@ -2077,7 +2152,7 @@ function renderChats() {
                 </span>
                 <span class="chat-time">${contact.time}</span>
               </span>
-              <span class="chat-preview">${contact.deleted ? 'This message was deleted' : contact.preview}</span>
+              <span class="chat-preview">${escapeHtml(contact.deleted ? 'This message was deleted' : getStickerPreviewText(contact.preview))}</span>
             </span>
             ${contact.unread ? `<span class="unread">${contact.unread}</span>` : '<span></span>'}
           </button>
@@ -2129,10 +2204,11 @@ function renderConversation() {
             const status = direction === 'out'
               ? `<span class="message-status ${isRead ? 'read' : 'sent'}" title="${isRead ? 'Read' : 'Sent'}">${isRead ? '✓✓' : '✓'}</span>`
               : '';
+            const sticker = message.deleted ? null : getStickerFromText(message.text);
             return `
-              <div class="bubble ${direction} ${message.deleted ? 'deleted' : ''}" data-message-id="${message.id}" data-contact-id="${contact.id}">
+              <div class="bubble ${direction} ${message.deleted ? 'deleted' : ''} ${sticker ? 'sticker-bubble' : ''}" data-message-id="${message.id}" data-contact-id="${contact.id}">
                 ${message.senderDisplayName ? `<strong class="sender-label">${escapeHtml(message.senderDisplayName)}</strong>` : ''}
-                ${message.deleted ? 'This message was deleted' : escapeHtml(message.text)}
+                ${message.deleted ? 'This message was deleted' : renderStickerMessage(message.text)}
                 <time>${status}${message.time}</time>
               </div>
             `;
@@ -2149,6 +2225,12 @@ function renderConversation() {
               ? '<button type="button" data-emoji-value="😀" aria-label="Add 😀">😀</button>'
               : `<button type="button" data-emoji-value="${emoji}" aria-label="Add ${emoji}">${emoji}</button>`
           )).join('')}
+        </span>
+      </span>
+      <span class="sticker-tools">
+        <button type="button" title="Stickers" aria-label="Stickers" data-sticker-toggle>&#10024;</button>
+        <span class="sticker-picker hidden" data-sticker-picker aria-label="${stickerPickerLabel}">
+          ${renderStickerPickerButtons()}
         </span>
       </span>
       <textarea id="messageInput" rows="1" autocomplete="off" placeholder="Type a message" spellcheck="true"></textarea>
@@ -2172,12 +2254,24 @@ function renderConversation() {
   });
   conversation.querySelector('[data-emoji-toggle]').addEventListener('click', () => {
     conversation.querySelector('[data-emoji-picker]').classList.toggle('hidden');
+    conversation.querySelector('[data-sticker-picker]').classList.add('hidden');
     conversation.querySelector('#messageInput').focus();
   });
   conversation.querySelector('[data-emoji-picker]').addEventListener('click', (event) => {
     const emojiButton = event.target.closest('[data-emoji-value]');
     if (!emojiButton) return;
     insertEmojiIntoMessage(conversation.querySelector('#messageInput'), emojiButton.dataset.emojiValue);
+  });
+  conversation.querySelector('[data-sticker-toggle]').addEventListener('click', () => {
+    conversation.querySelector('[data-sticker-picker]').classList.toggle('hidden');
+    conversation.querySelector('[data-emoji-picker]').classList.add('hidden');
+    conversation.querySelector('#messageInput').focus();
+  });
+  conversation.querySelector('[data-sticker-picker]').addEventListener('click', async (event) => {
+    const stickerButton = event.target.closest('[data-sticker-id]');
+    if (!stickerButton) return;
+    conversation.querySelector('[data-sticker-picker]').classList.add('hidden');
+    await sendStickerMessage(stickerButton.dataset.stickerId);
   });
   resizeComposer();
   conversation.querySelector('#composer').addEventListener('submit', async (event) => {
@@ -2340,7 +2434,7 @@ function subscribeActiveConversation() {
                 messages,
                 preview: messages.at(-1)?.deleted
                   ? 'This message was deleted'
-                  : messages.at(-1)?.text ?? (contact.group ? getGroupMemberLabel(contact) : contact.email),
+                  : getStickerPreviewText(messages.at(-1)?.text ?? (contact.group ? getGroupMemberLabel(contact) : contact.email)),
                 time: messages.at(-1)?.time ?? contact.time
               }
             : contact
@@ -2594,6 +2688,10 @@ function showMessageMenu(contactId, messageId, anchor = {}) {
 function showEditMessageDialog(contactId, messageId) {
   const message = getMessageById(contactId, messageId);
   if (!message) return;
+  if (getStickerFromText(message.text)) {
+    showToast('Stickers can be deleted, but not edited.');
+    return;
+  }
   closeMessageMenu();
   const existing = document.querySelector('.action-dialog-backdrop');
   if (existing) existing.remove();

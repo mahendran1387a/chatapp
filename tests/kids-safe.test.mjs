@@ -64,6 +64,8 @@ test('kids-safe UI styles are colorful card based and mobile touch friendly', ()
     assert.match(contents, /\.auth-user-row \{[\s\S]*?border-radius: 18px;[\s\S]*?box-shadow: var\(--card-shadow\);/);
     assert.match(contents, /\.empty-state,[\s\S]*?padding: 24px;/);
     assert.match(contents, /\.search-box \{[\s\S]*?min-height: 46px;/);
+    assert.match(contents, /\.sticker-picker \{[\s\S]*?grid-template-columns: repeat\(4, minmax\(0, 1fr\)\);/);
+    assert.match(contents, /@keyframes sticker-drive/);
     assert.match(contents, /@media \(max-width: 850px\) \{[\s\S]*?\.panel-header \{[\s\S]*?display: grid;/);
   }
 });
@@ -78,6 +80,11 @@ test('conversation allows text and voice call only, with no attachment/media but
     assert.match(contents, /data-emoji-value="😀"/);
     assert.match(contents, /😀 😂 🎮 🚀 🦄 🍕 ⚽/);
     assert.match(contents, /insertEmojiIntoMessage/);
+    assert.match(contents, /data-sticker-toggle/);
+    assert.match(contents, /stickerCatalog/);
+    assert.match(contents, /care-heart/);
+    assert.match(contents, /id: 'car'/);
+    assert.match(contents, /sendStickerMessage/);
     assert.match(contents, /message-status/);
     assert.match(contents, /readBy/);
     assert.doesNotMatch(contents, /data-action="attach"/);
@@ -143,6 +150,7 @@ test('chat layout keeps the message bar inside the visible screen on desktop and
     assert.match(contents, /\.conversation \{[\s\S]*?grid-template-rows: auto minmax\(0, 1fr\) auto;[\s\S]*?overflow: hidden;/);
     assert.match(contents, /\.messages \{[\s\S]*?min-height: 0;[\s\S]*?overflow-y: auto;/);
     assert.match(contents, /\.composer \{[\s\S]*?position: sticky;[\s\S]*?bottom: 0;[\s\S]*?z-index: 5;/);
+    assert.match(contents, /\.composer \{[\s\S]*?grid-template-columns: 46px 46px minmax\(0, 1fr\) 50px;/);
   }
 });
 
