@@ -73,7 +73,7 @@ const actionViews = {
   },
   attach: {
     title: 'Attach',
-    body: 'Media sharing is turned off to keep Kids WhatsApp simple and safe.',
+    body: 'Media sharing is turned off to keep Kids WhatsApp 2026 simple and safe.',
     primaryAction: 'OK',
     points: ['Text only', 'Voice calls', 'Safe chats']
   },
@@ -222,7 +222,7 @@ const settingsPages = {
     title: 'Help and feedback',
     items: [
       { type: 'action', label: 'Kind chat help', detail: 'Ask a parent or teacher if something feels wrong.' },
-      { type: 'action', label: 'App info', detail: 'Kids WhatsApp demo version 1.0' }
+      { type: 'action', label: 'App info', detail: 'Kids WhatsApp 2026 demo version 1.0' }
     ]
   },
   logout: {
