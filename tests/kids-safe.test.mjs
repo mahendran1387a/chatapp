@@ -21,7 +21,7 @@ test('kids-safe shell exposes chat, friends, and settings navigation', () => {
   for (const relativePath of webFiles) {
     const contents = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
 
-    assert.match(contents, /Kids WhatsApp 2026/);
+    assert.match(contents, /Kids WhatsApp 2026 - Dunes Kids WhatsApp/);
     assert.match(contents, /data-section="chats"/);
     assert.match(contents, /data-section="friends"/);
     assert.match(contents, /data-section="settings"/);

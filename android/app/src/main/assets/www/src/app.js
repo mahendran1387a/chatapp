@@ -1408,7 +1408,7 @@ function renderAuthGate() {
   authGate.innerHTML = `
     <div class="auth-card">
       <img src="app-icon.svg" alt="" />
-      <h1>Kids WhatsApp 2026</h1>
+      <h1>Kids WhatsApp 2026 - Dunes Kids WhatsApp</h1>
       <p>A colorful, private place for family and friends after Google sign-in.</p>
       ${authError ? `<small class="auth-error">${escapeHtml(authError)}</small>` : ''}
       ${configured
@@ -2482,7 +2482,7 @@ function renderSection() {
     conversation.classList.remove('hidden');
     emptyState.innerHTML = `
       <div class="empty-illustration">WA</div>
-      <h2>Kids WhatsApp 2026</h2>
+      <h2>Kids WhatsApp 2026 - Dunes Kids WhatsApp</h2>
       <p>Choose a friend and start a kind conversation.</p>
       <small>Safe text chat and voice calls.</small>
     `;

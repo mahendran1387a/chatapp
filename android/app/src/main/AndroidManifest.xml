@@ -3,7 +3,7 @@
         android:allowBackup="true"
         android:icon="@drawable/ic_launcher"
         android:roundIcon="@drawable/ic_launcher"
-        android:label="Kids WhatsApp 2026"
+        android:label="Kids WhatsApp 2026 - Dunes Kids WhatsApp"
         android:theme="@style/AppTheme">
         <activity
             android:name=".MainActivity"

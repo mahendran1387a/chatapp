@@ -16,7 +16,7 @@ test('app uses the teal chat icon for browser and Android launcher', () => {
   assert.match(launcher, /#19E6D2/);
 });
 
-test('app branding is Kids WhatsApp 2026 across web and Android shell', () => {
+test('app branding is Kids WhatsApp 2026 - Dunes Kids WhatsApp across web and Android shell', () => {
   const index = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   const androidIndex = readFileSync(new URL('../android/app/src/main/assets/www/index.html', import.meta.url), 'utf8');
   const app = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
@@ -25,10 +25,10 @@ test('app branding is Kids WhatsApp 2026 across web and Android shell', () => {
   const icon = readFileSync(new URL('../app-icon.svg', import.meta.url), 'utf8');
 
   for (const contents of [index, androidIndex, app, androidApp, manifest, icon]) {
-    assert.match(contents, /Kids WhatsApp 2026/);
+    assert.match(contents, /Kids WhatsApp 2026 - Dunes Kids WhatsApp/);
   }
-  assert.match(index, /<title>Kids WhatsApp 2026<\/title>/);
-  assert.match(androidIndex, /<title>Kids WhatsApp 2026<\/title>/);
+  assert.match(index, /<title>Kids WhatsApp 2026 - Dunes Kids WhatsApp<\/title>/);
+  assert.match(androidIndex, /<title>Kids WhatsApp 2026 - Dunes Kids WhatsApp<\/title>/);
   assert.doesNotMatch(index, />WhatsApp</);
   assert.doesNotMatch(app, />ChatApp</);
 });

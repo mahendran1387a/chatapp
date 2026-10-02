@@ -22,7 +22,7 @@ public class MainActivity extends Activity {
             finish();
         } catch (ActivityNotFoundException error) {
             TextView message = new TextView(this);
-            message.setText("To use Kids WhatsApp 2026, install a web browser and open:\n\n" + CHAT_URL);
+            message.setText("To use Kids WhatsApp 2026 - Dunes Kids WhatsApp, install a web browser and open:\n\n" + CHAT_URL);
             message.setTextIsSelectable(true);
             int padding = (int) (24 * getResources().getDisplayMetrics().density);
             message.setPadding(padding, padding, padding, padding);
