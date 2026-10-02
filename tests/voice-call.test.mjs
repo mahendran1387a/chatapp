@@ -114,9 +114,10 @@ test('voice signalling uses a production-safe websocket endpoint', () => {
   assert.match(app, /recipientUid/);
   assert.match(server, /import \{ WebSocket, WebSocketServer \} from 'ws'/);
   assert.match(server, /async function verifyFirebaseIdToken/);
-  assert.match(server, /VOICE_SIGNALING_ALLOW_UNVERIFIED/);
+  assert.match(server, /async function verifyApprovedFirebaseUser/);
+  assert.doesNotMatch(server, /allowUnverifiedVoiceSignaling/);
   assert.match(server, /decodedToken\.sub !== uid/);
-  assert.match(server, /new WebSocketServer\(\{ server, path: '\/voice' \}\)/);
+  assert.match(server, /server, path: '\/voice', maxPayload:/);
   assert.match(server, /message\.senderUid !== socket\.userUid/);
   assert.match(server, /recipientUid/);
   assert.match(packageJson, /"ws":/);
@@ -159,7 +160,7 @@ test('online labels use active voice socket presence instead of stale database-o
     assert.match(app, /function getDisplayedOnlineStatus/);
     assert.match(app, /voiceOnlineUserIds\.has\(entity\?\.uid\)/);
     assert.match(app, /message\.type === 'voice-presence'/);
-    assert.match(app, /updateCurrentPresence\('online', \{ force: true \}\)/);
+    assert.match(app, /updateCurrentPresence\(document\.hidden \? 'away' : 'online', \{ force: true \}\)/);
     assert.match(app, /renderPresenceStatus\(getDisplayedOnlineStatus\(contact\), extraClass\)/);
     assert.match(app, /renderPresenceStatus\(getDisplayedOnlineStatus\(user\), 'mini'\)/);
   }

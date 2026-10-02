@@ -281,7 +281,7 @@ test('Firestore group creation rules match the complete group ownership schema w
   assert.match(rules, /!\('creatorId' in request\.resource\.data\) \|\| request\.resource\.data\.creatorId == request\.auth\.uid/);
   assert.match(rules, /request\.resource\.data\.hostUid == request\.auth\.uid/);
   assert.match(rules, /request\.resource\.data\.adminUids is list/);
-  assert.match(rules, /request\.resource\.data\.adminUids\.hasAny\(\[request\.auth\.uid\]\)/);
+  assert.match(rules, /request\.resource\.data\.adminUids == \[request\.auth\.uid\]/);
   assert.match(rules, /request\.resource\.data\.updatedAt is timestamp/);
   assert.match(rules, /match \/groupMembers\/\{document=\*\*\}/);
   assert.match(rules, /match \/invitations\/\{document=\*\*\}/);
@@ -418,9 +418,9 @@ test('group join requests persist in Firestore and managers can approve or rejec
   assert.match(firebase, /export function subscribeDiscoverableGroups/);
   assert.match(firebase, /export function subscribeOwnGroupJoinRequests/);
   assert.match(firebase, /export function subscribeManagedGroupJoinRequests/);
-  assert.match(firebase, /where\('managerIds', 'array-contains', user\.uid\)/);
+  assert.match(firebase, /where\('groupId', '==', groupId\)/);
   assert.match(firebase, /where\('status', '==', 'pending'\)/);
-  assert.doesNotMatch(firebase, /where\('groupId', '==', group\.id\)/);
+  assert.doesNotMatch(firebase, /where\('managerIds', 'array-contains', user\.uid\)/);
   assert.match(firebase, /export async function approveGroupJoinRequest/);
   assert.match(firebase, /export async function rejectGroupJoinRequest/);
   assert.match(firebase, /const creatorUid = getGroupCreatorUid\(groupData\)/);
@@ -431,9 +431,10 @@ test('group join requests persist in Firestore and managers can approve or rejec
   assert.match(firebase, /console\.info\('\[Kids WhatsApp\] Group join request saved'/);
   assert.match(firebase, /writeBatch\(firebase\.db\)/);
   assert.match(firebase, /new Set\(\[\.\.\.getExistingGroupMembers\(group\), request\.uid\]\)/);
-  assert.match(firebase, /memberIds: nextMembers/);
-  assert.match(firebase, /members: nextMembers/);
-  assert.match(firebase, /participants: nextMembers/);
+  assert.match(firebase, /memberIds: arrayUnion\(\.\.\.nextMembers\)/);
+  assert.match(firebase, /members: arrayUnion\(\.\.\.nextMembers\)/);
+  assert.match(firebase, /participants: arrayUnion\(\.\.\.nextMembers\)/);
+  assert.match(firebase, /runTransaction\(firebase\.db/);
   assert.match(firebase, /console\.info\('\[Kids WhatsApp\] Approving group join'/);
   assert.match(firebase, /console\.info\('\[Kids WhatsApp\] Approved group join'/);
   assert.match(firebase, /status: 'approved'/);
@@ -459,7 +460,8 @@ test('group join requests persist in Firestore and managers can approve or rejec
   assert.match(rules, /match \/groupJoinRequests\/\{requestId\}/);
   assert.match(rules, /function joinRequestManager\(data\)/);
   assert.match(rules, /request\.resource\.data\.managerIds is list/);
-  assert.match(rules, /request\.resource\.data\.hostId == get\(\/databases\/\$\(database\)\/documents\/groups\/\$\(request\.resource\.data\.groupId\)\)\.data\.hostId/);
+  assert.match(rules, /request\.resource\.data\.hostId == group\.get\('hostId'/);
+  assert.match(rules, /request\.resource\.data\.managerIds\.toSet\(\) == groupManagerIds\(group\)/);
   assert.match(rules, /function validGroupJoinRequestCreate\(requestId\)/);
   assert.match(rules, /function validGroupJoinDecision\(\)/);
   assert.match(rules, /request\.resource\.data\.status == 'pending'/);

@@ -1,44 +1,32 @@
 package com.chatapp.demo;
 
 import android.app.Activity;
+import android.content.ActivityNotFoundException;
+import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
-import android.view.ViewGroup;
-import android.webkit.WebSettings;
-import android.webkit.WebView;
-import android.webkit.WebViewClient;
+import android.widget.TextView;
 
 public class MainActivity extends Activity {
-    private WebView webView;
+    private static final String CHAT_URL = "https://chatapp-c4a7.onrender.com";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        webView = new WebView(this);
-        webView.setLayoutParams(new ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-        ));
-        webView.setWebViewClient(new WebViewClient());
-
-        WebSettings settings = webView.getSettings();
-        settings.setJavaScriptEnabled(true);
-        settings.setDomStorageEnabled(true);
-        settings.setDatabaseEnabled(true);
-        settings.setAllowFileAccess(true);
-        settings.setAllowContentAccess(true);
-        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
-
-        setContentView(webView);
-        webView.loadUrl("file:///android_asset/www/index.html");
-    }
-
-    @Override
-    public void onBackPressed() {
-        if (webView != null && webView.canGoBack()) {
-            webView.goBack();
-            return;
+        // Google sign-in requires a browser, and calls use the hosted HTTPS origin.
+        Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(CHAT_URL));
+        browserIntent.addCategory(Intent.CATEGORY_BROWSABLE);
+        try {
+            startActivity(browserIntent);
+            finish();
+        } catch (ActivityNotFoundException error) {
+            TextView message = new TextView(this);
+            message.setText("To use Kids WhatsApp 2026, install a web browser and open:\n\n" + CHAT_URL);
+            message.setTextIsSelectable(true);
+            int padding = (int) (24 * getResources().getDisplayMetrics().density);
+            message.setPadding(padding, padding, padding, padding);
+            setContentView(message);
         }
-        super.onBackPressed();
     }
 }

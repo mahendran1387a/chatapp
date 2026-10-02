@@ -1,17 +1,15 @@
 import { createVerify } from 'node:crypto';
-import { createReadStream, existsSync, statSync } from 'node:fs';
+import { createReadStream, realpathSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { extname, join, normalize } from 'node:path';
+import { extname, join, relative, resolve, sep } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { WebSocket, WebSocketServer } from 'ws';
 import { createChatStateStore } from './chat-state-store.mjs';
 import { readRequestBody } from './http-utils.mjs';
 
-const root = process.cwd();
 const port = Number(process.env.PORT ?? 4173);
 const host = process.env.HOST ?? '0.0.0.0';
-const chatStateStore = createChatStateStore({ root });
 const firebaseProjectId = process.env.FIREBASE_PROJECT_ID ?? 'kidswhatsapp-6fffb';
-const allowUnverifiedVoiceSignaling = process.env.VOICE_SIGNALING_ALLOW_UNVERIFIED === 'true';
 let firebaseCertCache = { expiresAt: 0, certs: {} };
 const voiceSignalTypes = new Set([
   'call-offer',
@@ -30,14 +28,24 @@ const types = {
   '.svg': 'image/svg+xml'
 };
 
-function resolvePath(url) {
-  const pathname = decodeURIComponent(new URL(url, `http://127.0.0.1:${port}`).pathname);
-  const cleanPath = normalize(pathname).replace(/^(\.\.[/\\])+/, '');
-  const filePath = join(root, cleanPath === '/' ? 'index.html' : cleanPath);
-  if (!filePath.startsWith(root)) return null;
-  if (!existsSync(filePath)) return null;
-  if (statSync(filePath).isDirectory()) return join(filePath, 'index.html');
-  return filePath;
+function resolvePath(pathname, root) {
+  const components = pathname.split('/').filter(Boolean);
+  if (components.some(part => part.startsWith('.') || part.includes('\\'))) return null;
+  const publicFiles = new Set(['index.html', 'styles.css', 'app-icon.svg']);
+  const publicSourceFiles = new Set(['app.js', 'chat-store.js', 'firebase-chat.js', 'firebase-config.js']);
+  const allowed = !components.length ||
+    (components.length === 1 && publicFiles.has(components[0])) ||
+    (components.length === 2 && components[0] === 'src' && publicSourceFiles.has(components[1]));
+  if (!allowed) return null;
+  try {
+    const actualRoot = realpathSync(root);
+    const filePath = realpathSync(join(actualRoot, ...(!components.length ? ['index.html'] : components)));
+    const relativePath = relative(actualRoot, filePath);
+    if (relativePath.startsWith(`..${sep}`) || relativePath === '..' || resolve(actualRoot, relativePath) !== filePath) return null;
+    // A public alias must never expose a private file through a symlink.
+    if (filePath !== join(actualRoot, ...(!components.length ? ['index.html'] : components))) return null;
+    return statSync(filePath).isFile() ? filePath : null;
+  } catch { return null; }
 }
 
 function sendJson(response, status, data) {
@@ -59,7 +67,11 @@ function sendText(response, status, text) {
   response.end(text);
 }
 
-async function handleChatsApi(request, response) {
+async function handleChatsApi(request, response, getUserStore, authorizeUser) {
+  const idToken = request.headers.authorization?.match(/^Bearer (\S+)$/i)?.[1];
+  if (!idToken) throw Object.assign(new Error('Sign in required'), { statusCode: 401 });
+  const decodedToken = await authorizeUser(idToken);
+  const chatStateStore = getUserStore(decodedToken.sub);
   if (request.method === 'GET') {
     sendJson(response, 200, await chatStateStore.read());
     return;
@@ -67,7 +79,11 @@ async function handleChatsApi(request, response) {
 
   if (request.method === 'POST' || request.method === 'PUT') {
     const body = await readRequestBody(request);
-    const data = JSON.parse(body);
+    let data;
+    try { data = JSON.parse(body); } catch {
+      throw Object.assign(new Error('Invalid JSON'), { statusCode: 400 });
+    }
+    validateChatPayload(data);
     const merged = await chatStateStore.merge(data);
     sendJson(response, 200, { ok: true, state: merged });
     return;
@@ -93,7 +109,7 @@ async function getFirebaseSigningCerts() {
     return firebaseCertCache.certs;
   }
 
-  const response = await fetch('https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com');
+  const response = await fetch('https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com', { signal: AbortSignal.timeout(10000) });
   if (!response.ok) {
     throw new Error(`Could not load Firebase signing certificates: ${response.status}`);
   }
@@ -106,19 +122,20 @@ async function getFirebaseSigningCerts() {
   return firebaseCertCache.certs;
 }
 
-async function verifyFirebaseIdToken(idToken) {
+export async function verifyFirebaseIdToken(idToken) {
   if (typeof idToken !== 'string' || !idToken.trim()) {
     throw new Error('Missing Firebase ID token.');
   }
 
-  const [encodedHeader, encodedPayload, encodedSignature] = idToken.split('.');
-  if (!encodedHeader || !encodedPayload || !encodedSignature) {
+  const parts = idToken.split('.');
+  const [encodedHeader, encodedPayload, encodedSignature] = parts;
+  if (parts.length !== 3 || !encodedHeader || !encodedPayload || !encodedSignature || idToken.length > 16384) {
     throw new Error('Invalid Firebase ID token.');
   }
 
   const header = readJwtJson(encodedHeader);
   const payload = readJwtJson(encodedPayload);
-  if (header.alg !== 'RS256') {
+  if (!isRecord(header) || !isRecord(payload) || header.alg !== 'RS256' || typeof header.kid !== 'string') {
     throw new Error('Unexpected Firebase token signing algorithm.');
   }
   if (payload.aud !== firebaseProjectId) {
@@ -127,11 +144,11 @@ async function verifyFirebaseIdToken(idToken) {
   if (payload.iss !== `https://securetoken.google.com/${firebaseProjectId}`) {
     throw new Error('Firebase token issuer did not match this app.');
   }
-  if (!payload.sub) {
+  if (typeof payload.sub !== 'string' || !payload.sub || payload.sub.length > 128 || typeof payload.email !== 'string') {
     throw new Error('Firebase token did not include a user ID.');
   }
   const nowSeconds = Math.floor(Date.now() / 1000);
-  if (Number(payload.exp ?? 0) <= nowSeconds) {
+  if (!Number.isFinite(payload.exp) || payload.exp <= nowSeconds || !Number.isFinite(payload.iat) || payload.iat > nowSeconds || !Number.isFinite(payload.auth_time) || payload.auth_time > nowSeconds) {
     throw new Error('Firebase token has expired.');
   }
 
@@ -150,12 +167,45 @@ async function verifyFirebaseIdToken(idToken) {
   return payload;
 }
 
-async function verifyVoiceHello(uid, idToken) {
-  const decodedToken = allowUnverifiedVoiceSignaling
-    ? { sub: uid }
-    : await verifyFirebaseIdToken(idToken);
+async function verifyVoiceHello(uid, idToken, authorizeUser) {
+  const decodedToken = await authorizeUser(idToken);
   if (decodedToken.sub !== uid) {
     throw new Error('Firebase token user did not match the voice connection user.');
+  }
+  return decodedToken;
+}
+
+function isRecord(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function validateChatPayload(data) {
+  const validId = id => typeof id === 'string' && id.length > 0 && id.length <= 256;
+  if (!isRecord(data) ||
+      (data.contacts !== undefined && (!Array.isArray(data.contacts) || data.contacts.length > 1000 || data.contacts.some(contact =>
+        !isRecord(contact) || !validId(contact.id) ||
+        (contact.messages !== undefined && (!Array.isArray(contact.messages) || contact.messages.length > 50000 || contact.messages.some(message =>
+          !isRecord(message) || !validId(message.id))))))) ||
+      (data.deletedContactIds !== undefined && (!Array.isArray(data.deletedContactIds) || data.deletedContactIds.length > 10000 || data.deletedContactIds.some(id => !validId(id)))) ||
+      (data.activeContactId !== undefined && data.activeContactId !== null && !validId(data.activeContactId))) {
+    throw Object.assign(new Error('Invalid chat state'), { statusCode: 400 });
+  }
+}
+
+export async function verifyApprovedFirebaseUser(idToken) {
+  let decodedToken;
+  try { decodedToken = await verifyFirebaseIdToken(idToken); } catch {
+    throw Object.assign(new Error('Invalid sign-in'), { statusCode: 401 });
+  }
+  const profileUrl = `https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/(default)/documents/users/${encodeURIComponent(decodedToken.sub)}`;
+  const response = await fetch(profileUrl, {
+    headers: { Authorization: `Bearer ${idToken}` }, signal: AbortSignal.timeout(10000)
+  });
+  if (!response.ok) throw Object.assign(new Error('Approved profile required'), { statusCode: response.status >= 500 ? 503 : 403 });
+  const profile = (await response.json()).fields;
+  if (profile?.approved?.booleanValue !== true || profile?.uid?.stringValue !== decodedToken.sub ||
+      profile?.email?.stringValue !== decodedToken.email.trim().toLowerCase()) {
+    throw Object.assign(new Error('Approved profile required'), { statusCode: 403 });
   }
   return decodedToken;
 }
@@ -228,7 +278,7 @@ function getOpenVoiceTargets(clientsByUid, uid) {
   return openTargets;
 }
 
-function handleVoiceSignal(clientsByUid, socket, message) {
+async function handleVoiceSignal(clientsByUid, socket, message, authorizeUser) {
   if (!socket.userUid) {
     sendVoiceJson(socket, { type: 'voice-error', message: 'Sign in before starting a call.' });
     return;
@@ -243,7 +293,18 @@ function handleVoiceSignal(clientsByUid, socket, message) {
     return;
   }
 
-  const recipientUid = typeof message.recipientUid === 'string' ? message.recipientUid.trim() : '';
+  const validString = (value, limit) => typeof value === 'string' && value.length > 0 && value.length <= limit;
+  const descriptionKey = message.type === 'call-offer' ? 'offer' : message.type === 'call-answer' ? 'answer' : null;
+  const description = descriptionKey ? message[descriptionKey] : null;
+  if (!validString(message.callId, 256) || !validString(message.recipientUid, 128) ||
+      (descriptionKey && (!isRecord(description) || description.type !== descriptionKey || !validString(description.sdp, 65536))) ||
+      (message.type === 'ice-candidate' && (!isRecord(message.candidate) || !validString(message.candidate.candidate, 8192))) ||
+      ['senderEmail', 'senderDisplayName', 'senderPhotoURL', 'reason'].some(key => message[key] !== undefined && (typeof message[key] !== 'string' || message[key].length > 2048))) {
+    sendVoiceJson(socket, { type: 'voice-error', message: 'Invalid call signal.' });
+    return;
+  }
+
+  const recipientUid = message.recipientUid.trim();
   const targets = recipientUid ? getOpenVoiceTargets(clientsByUid, recipientUid) : [];
   if (!recipientUid || !targets.length) {
     sendVoiceJson(socket, {
@@ -255,23 +316,54 @@ function handleVoiceSignal(clientsByUid, socket, message) {
     return;
   }
 
+  try {
+    await verifyVoiceHello(socket.userUid, socket.firebaseIdToken, authorizeUser);
+    if (socket.readyState !== WebSocket.OPEN) return;
+    // An already connected recipient can also have expired or withdrawn approval.
+    for (const target of targets) {
+      await verifyVoiceHello(recipientUid, target.firebaseIdToken, authorizeUser);
+    }
+  } catch {
+    sendVoiceJson(socket, { type: 'voice-error', message: 'Call access could not be verified. Sign in with an approved account again.' });
+    return;
+  }
+
+  if (socket.readyState !== WebSocket.OPEN) return;
   const forwarded = {
-    ...message,
+    type: message.type,
+    callId: message.callId,
+    recipientUid,
+    ...(descriptionKey ? { [descriptionKey]: description } : {}),
+    ...(message.type === 'ice-candidate' ? { candidate: message.candidate } : {}),
+    ...(message.reason !== undefined ? { reason: message.reason } : {}),
+    senderEmail: socket.authClaims.email ?? '',
+    senderDisplayName: socket.authClaims.name ?? socket.authClaims.email ?? 'Google user',
+    senderPhotoURL: socket.authClaims.picture ?? '',
     senderUid: socket.userUid,
     fromUid: socket.userUid,
     serverTime: Date.now()
   };
   for (const target of targets) {
-    sendVoiceJson(target, forwarded);
+    if (target.userUid === recipientUid) sendVoiceJson(target, forwarded);
   }
 }
 
-function setupVoiceSignalling(server) {
+function setupVoiceSignalling(server, authorizeUser) {
   const clientsByUid = new Map();
-  const wss = new WebSocketServer({ server, path: '/voice' });
+  const wss = new WebSocketServer({
+    server, path: '/voice', maxPayload: 128 * 1024,
+    verifyClient: ({ origin, req }, done) => {
+      let valid = !origin;
+      try {
+        const parsed = new URL(origin);
+        valid = ['http:', 'https:'].includes(parsed.protocol) && parsed.host === req.headers.host;
+      } catch {}
+      done(valid, 403, 'Origin not allowed');
+    }
+  });
 
   wss.on('connection', (socket) => {
-    socket.on('message', async (rawMessage) => {
+    const handleMessage = async rawMessage => {
       let message;
       try {
         message = JSON.parse(rawMessage.toString());
@@ -280,23 +372,36 @@ function setupVoiceSignalling(server) {
         return;
       }
 
+      if (!isRecord(message) || typeof message.type !== 'string') {
+        sendVoiceJson(socket, { type: 'voice-error', message: 'Voice signal must be an object with a type.' });
+        return;
+      }
+
       if (message.type === 'hello') {
         const uid = typeof message.uid === 'string' ? message.uid.trim() : '';
-        if (!uid) {
+        if (!uid || uid.length > 128 || (message.sessionId !== undefined && (typeof message.sessionId !== 'string' || message.sessionId.length > 256))) {
           sendVoiceJson(socket, { type: 'voice-error', message: 'Voice connection needs a signed-in user.' });
           return;
         }
         const browserSessionId = typeof message.sessionId === 'string' ? message.sessionId.trim() : '';
+        let decodedToken;
         try {
-          await verifyVoiceHello(uid, message.idToken);
+          decodedToken = await verifyVoiceHello(uid, message.idToken, authorizeUser);
         } catch (error) {
-          console.warn('[Kids WhatsApp] Voice auth rejected', { uid, error: error.message });
           sendVoiceJson(socket, {
             type: 'voice-error',
             message: 'Voice sign-in could not be verified. Refresh and sign in again.'
           });
           socket.close(1008, 'Voice auth failed');
           return;
+        }
+        if (socket.readyState !== WebSocket.OPEN) return;
+        socket.firebaseIdToken = message.idToken;
+        socket.authClaims = { email: decodedToken.email, name: decodedToken.name, picture: decodedToken.picture };
+        clearTimeout(socket.authExpiryTimer);
+        if (Number.isFinite(decodedToken.exp)) {
+          socket.authExpiryTimer = setTimeout(() => socket.close(1008, 'Sign-in expired'), Math.max(0, decodedToken.exp * 1000 - Date.now()));
+          socket.authExpiryTimer.unref();
         }
         removeVoiceClient(clientsByUid, socket);
         addVoiceClient(clientsByUid, socket, uid, browserSessionId);
@@ -314,10 +419,25 @@ function setupVoiceSignalling(server) {
         return;
       }
 
-      handleVoiceSignal(clientsByUid, socket, message);
+      await handleVoiceSignal(clientsByUid, socket, message, authorizeUser);
+    };
+    // Serialize authentication and signals so concurrent hello messages cannot swap identities.
+    let messageQueue = Promise.resolve();
+    let queuedMessages = 0;
+    socket.on('message', rawMessage => {
+      if (++queuedMessages > 32) { socket.close(1008, 'Too many pending signals'); return; }
+      messageQueue = messageQueue.then(() => {
+        if (socket.readyState === WebSocket.OPEN) return handleMessage(rawMessage);
+      }).catch(() => {
+        sendVoiceJson(socket, { type: 'voice-error', message: 'Call signal could not be verified.' });
+        socket.close(1008, 'Voice signal failed');
+      }).finally(() => { queuedMessages -= 1; });
     });
 
     socket.on('close', () => {
+      clearTimeout(socket.authExpiryTimer);
+      socket.firebaseIdToken = '';
+      socket.authClaims = null;
       removeVoiceClient(clientsByUid, socket);
       broadcastVoicePresence(wss, clientsByUid);
     });
@@ -328,41 +448,69 @@ function setupVoiceSignalling(server) {
   });
 }
 
-const server = createServer(async (request, response) => {
-  const pathname = new URL(request.url ?? '/', `http://127.0.0.1:${port}`).pathname;
-  if (pathname === '/healthz') {
-    sendJson(response, 200, { ok: true });
-    return;
-  }
-
-  if (pathname === '/api/chats') {
-    try {
-      await handleChatsApi(request, response);
-    } catch (error) {
-      console.error('Chat API error:', error);
-      sendJson(response, error.statusCode ?? 500, { error: 'Could not save chats' });
+export function createAppServer({ root = process.cwd(), authorizeUser = verifyApprovedFirebaseUser, databaseUrl = process.env.DATABASE_URL } = {}) {
+  const storesByUid = new Map();
+  const getUserStore = uid => {
+    if (typeof uid !== 'string' || !uid || uid.length > 128) throw Object.assign(new Error('Invalid user'), { statusCode: 401 });
+    if (!storesByUid.has(uid)) storesByUid.set(uid, createChatStateStore({ root, databaseUrl, uid }));
+    return storesByUid.get(uid);
+  };
+  const server = createServer(async (request, response) => {
+    let pathname;
+    try { pathname = decodeURIComponent(new URL(request.url ?? '/', 'http://127.0.0.1').pathname); } catch {
+      sendText(response, 400, 'Invalid URL');
+      return;
     }
-    return;
-  }
+    if (pathname === '/healthz') {
+      sendJson(response, 200, { ok: true });
+      return;
+    }
 
-  const filePath = resolvePath(request.url ?? '/');
-  if (!filePath) {
-    sendText(response, 404, 'Not found');
-    return;
-  }
+    if (pathname === '/api/chats') {
+      try {
+        await handleChatsApi(request, response, getUserStore, authorizeUser);
+      } catch (error) {
+        if (!error.statusCode) console.error('Chat API error:', error.message);
+        sendJson(response, error.statusCode ?? 500, { error: error.statusCode && error.statusCode < 500 ? error.message : 'Could not load or save chats' });
+      }
+      return;
+    }
 
-  response.writeHead(200, {
-    'Cache-Control': 'no-store, max-age=0',
-    'Content-Type': types[extname(filePath)] ?? 'application/octet-stream',
-    'Referrer-Policy': 'no-referrer',
-    'X-Content-Type-Options': 'nosniff'
+    if (request.method !== 'GET' && request.method !== 'HEAD') {
+      sendText(response, 405, 'Method not allowed');
+      return;
+    }
+    const filePath = resolvePath(pathname, root);
+    if (!filePath) {
+      sendText(response, 404, 'Not found');
+      return;
+    }
+
+    response.writeHead(200, {
+      'Cache-Control': 'no-store, max-age=0',
+      'Content-Type': types[extname(filePath)] ?? 'application/octet-stream',
+      'Referrer-Policy': 'no-referrer',
+      'X-Content-Type-Options': 'nosniff'
+    });
+    if (request.method === 'HEAD') { response.end(); return; }
+    const stream = createReadStream(filePath);
+    stream.on('error', () => response.destroy());
+    response.on('close', () => stream.destroy());
+    stream.pipe(response);
   });
-  createReadStream(filePath).pipe(response);
-});
 
-setupVoiceSignalling(server);
+  setupVoiceSignalling(server, authorizeUser);
+  server.on('close', () => {
+    for (const store of storesByUid.values()) store.close?.().catch(() => {});
+  });
+  return server;
+}
 
-server.listen(port, host, () => {
-  console.log(`ChatApp running at http://127.0.0.1:${port}`);
-  console.log(`LAN access enabled at http://<this-computer-ip>:${port}`);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  const server = createAppServer();
+  server.listen(port, host, () => {
+    const listeningPort = server.address().port;
+    console.log(`ChatApp running at http://127.0.0.1:${listeningPort}`);
+    console.log(`LAN access enabled at http://<this-computer-ip>:${listeningPort}`);
+  });
+}

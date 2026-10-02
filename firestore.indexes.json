@@ -5,13 +5,21 @@
       "queryScope": "COLLECTION",
       "fields": [
         {
-          "fieldPath": "managerIds",
-          "arrayConfig": "CONTAINS"
+          "fieldPath": "groupId",
+          "order": "ASCENDING"
         },
         {
           "fieldPath": "status",
           "order": "ASCENDING"
         }
+      ]
+    },
+    {
+      "collectionGroup": "groupJoinRequests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "uid", "order": "ASCENDING" },
+        { "fieldPath": "groupId", "order": "ASCENDING" }
       ]
     }
   ],

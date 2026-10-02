@@ -21,6 +21,8 @@ import {
   approveFamilyMember,
   createFirebaseGroup,
   deleteFirebaseGroup,
+  deleteFirebaseMessage,
+  updateFirebaseMessage,
   getFirebaseSetupStatus,
   isFamilyOwnerEmail,
   logoutGoogleUser,
@@ -49,10 +51,6 @@ import {
 const savedChatStorageKey = 'chatapp.savedChats.v1';
 const clientIdStorageKey = 'chatapp.clientId.v1';
 const profileStorageKey = 'kidswhatsapp.profile.v1';
-const serverChatStorageUrl = '/api/chats';
-const syncIntervalMs = 1500;
-let lastChatSnapshot = '';
-let isSavingChats = false;
 
 function createClientId() {
   return `client-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -90,35 +88,16 @@ function getPersistedChatPayload() {
   };
 }
 
-function stringifyChatPayload(payload) {
-  return JSON.stringify(payload);
-}
-
-function rememberChatSnapshot(payload = getPersistedChatPayload()) {
-  lastChatSnapshot = stringifyChatPayload(payload);
-}
-
-function loadSavedChatState() {
+function loadSavedChatState(uid = '') {
   try {
-    const saved = window.localStorage.getItem(savedChatStorageKey);
+    const saved = window.localStorage.getItem(`${savedChatStorageKey}.${uid}`);
     return saved ? JSON.parse(saved) : {};
   } catch {
     return {};
   }
 }
 
-async function loadServerChatState() {
-  if (window.location.protocol === 'file:') return {};
-  try {
-    const response = await fetch(serverChatStorageUrl, { cache: 'no-store' });
-    if (!response.ok) return {};
-    return await response.json();
-  } catch {
-    return {};
-  }
-}
-
-function loadProfileValues() {
+function loadProfileValues(uid = '') {
   const defaults = {
     Name: 'Aadhish Mahendran',
     Photo: '',
@@ -127,7 +106,7 @@ function loadProfileValues() {
     'Fun bio': 'I like games, space, and kind chats.'
   };
   try {
-    const saved = window.localStorage.getItem(profileStorageKey);
+    const saved = window.localStorage.getItem(`${profileStorageKey}.${uid}`);
     const parsed = saved ? JSON.parse(saved) : {};
     return {
       ...defaults,
@@ -144,7 +123,7 @@ function loadProfileValues() {
 function saveProfileValues() {
   try {
     window.localStorage.setItem(
-      profileStorageKey,
+      `${profileStorageKey}.${currentAuthUser?.uid ?? ''}`,
       JSON.stringify({
         Status: profileValues.Status,
         'Favorite color': profileValues['Favorite color'],
@@ -157,39 +136,21 @@ function saveProfileValues() {
 }
 
 function saveLocalChatState(payload) {
-  window.localStorage.setItem(savedChatStorageKey, JSON.stringify(payload));
-}
-
-async function saveServerChatState(payload) {
-  if (window.location.protocol === 'file:') return;
-  await fetch(serverChatStorageUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
+  window.localStorage.setItem(`${savedChatStorageKey}.${currentAuthUser?.uid ?? ''}`, JSON.stringify(payload));
 }
 
 function saveChatState() {
-  const payload = getPersistedChatPayload();
-  rememberChatSnapshot(payload);
+  if (!currentAuthUser || !isCurrentUserApproved()) return;
   try {
-    saveLocalChatState(payload);
+    saveLocalChatState(getPersistedChatPayload());
   } catch {
-    // Incognito can block local storage, so the server save below is the important fallback.
+    // Firebase remains authoritative if browser storage is unavailable.
   }
-  if (!authReady || currentAuthUser) return;
-  isSavingChats = true;
-  saveServerChatState(payload)
-    .catch(() => showToast('Could not save chat on this browser'))
-    .finally(() => {
-      isSavingChats = false;
-    });
 }
 
 const currentClientId = getClientId();
 const savedInitialChatState = loadSavedChatState();
 let state = createInitialState(savedInitialChatState);
-rememberChatSnapshot();
 let currentFilter = 'all';
 let activeAction = null;
 let activeSettingsPage = null;
@@ -197,6 +158,9 @@ let activeContactMenuId = null;
 let activeMessageMenu = null;
 let currentAuthUser = null;
 let authReady = false;
+let authGeneration = 0;
+const messageDrafts = new Map();
+const pendingMessageSends = new Map();
 let authError = '';
 let chatsLoading = false;
 let approvedUsersLoaded = false;
@@ -220,6 +184,8 @@ let unsubscribeOwnGroupJoinRequests = () => {};
 let unsubscribeManagedGroupJoinRequests = () => {};
 let subscribedConversationContactId = '';
 let familyListsStarted = false;
+let familySubscriptionGeneration = 0;
+const unreadSubscriptions = new Map();
 let settingsSearchQuery = '';
 let friendSearchQuery = '';
 let currentPresenceStatus = '';
@@ -227,6 +193,23 @@ let mobileConversationOpen = false;
 let restoreSelectedChatOnLoad = Boolean(savedInitialChatState.activeContactId);
 let selectedGroupMemberIds = new Set();
 const settingSwitches = new Map();
+const settingStorageKey = 'kidswhatsapp.settings.v1';
+
+function loadSettingSwitches(uid) {
+  settingSwitches.clear();
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(`${settingStorageKey}.${uid}`) ?? '{}');
+    for (const key of ['privacy-0', 'chatsSettings-2']) {
+      if (typeof saved?.[key] === 'boolean') settingSwitches.set(key, saved[key]);
+    }
+  } catch { /* Missing or unavailable browser storage uses defaults. */ }
+}
+
+function saveSettingSwitches() {
+  try {
+    window.localStorage.setItem(`${settingStorageKey}.${currentAuthUser.uid}`, JSON.stringify(Object.fromEntries(settingSwitches)));
+  } catch { /* Keep the working in-memory preferences. */ }
+}
 const profileValues = loadProfileValues();
 const profileOwnershipLabels = {
   googleName: 'Safe sign-in name',
@@ -265,6 +248,7 @@ let voiceOnlineUserIds = new Set();
 let voiceSignalQueue = [];
 let voicePeerConnection = null;
 let voiceLocalStream = null;
+let voiceMediaGeneration = 0;
 let voiceRemoteStream = null;
 let pendingVoiceCandidates = [];
 let voiceCallTimeout = null;
@@ -308,7 +292,7 @@ function initials(name) {
 }
 
 function renderAvatar(label, color, extraClass = '', textColor = '#ffffff') {
-  return `<span class="avatar ${extraClass}" style="background:${color}; color:${textColor}">${label}</span>`;
+  return `<span class="avatar ${extraClass}" style="background:${escapeAttribute(color)}; color:${escapeAttribute(textColor)}">${escapeHtml(label)}</span>`;
 }
 
 function getContactEmail(contact) {
@@ -374,7 +358,7 @@ function renderPresenceStatus(onlineStatus, extraClass = '') {
 
 function getDisplayedOnlineStatus(entity) {
   if (voiceOnlineUserIds.has(entity?.uid)) return 'online';
-  return getPresenceStatusClass(entity?.onlineStatus);
+  return entity?.onlineStatus === 'away' ? 'away' : 'offline';
 }
 
 function renderUserEmailLine(user, extraClass = 'user-card-email') {
@@ -463,8 +447,9 @@ function clearVoiceCallTimer() {
 
 function startVoiceCallTimer(callId, recipientUid) {
   clearVoiceCallTimer();
+  if (voiceCallState.status === 'Connected') return;
   voiceCallTimeout = window.setTimeout(() => {
-    if (voiceCallState.callId !== callId || voiceCallState.status !== 'Calling') return;
+    if (voiceCallState.callId !== callId || !['Calling', 'Ringing'].includes(voiceCallState.status)) return;
     sendVoiceSignal({
       type: 'call-timeout',
       callId,
@@ -543,6 +528,7 @@ function renderVoiceCallDialog() {
 }
 
 function cleanupVoicePeerAndMedia() {
+  voiceMediaGeneration++;
   clearVoiceCallTimer();
   pendingVoiceCandidates = [];
   if (voicePeerConnection) {
@@ -701,6 +687,8 @@ async function ensureVoiceSocket() {
   socket.addEventListener('message', handleVoiceSocketMessage);
   socket.addEventListener('close', () => {
     if (voiceSocket === socket) voiceSocket = null;
+    if (voiceSocket && voiceSocket !== socket) return;
+    voiceOnlineUserIds = new Set();
     voiceSocketReady = false;
     voiceSocketReadyPromise = null;
     if (isVoiceCallActive()) {
@@ -730,7 +718,7 @@ async function ensureVoiceSocket() {
         voiceSocketReadyPromise = null;
         voiceSocketReconnectAttempts = 0;
         applyVoicePresence(message);
-        updateCurrentPresence('online', { force: true });
+        updateCurrentPresence(document.hidden ? 'away' : 'online', { force: true });
         flushVoiceSignalQueue();
         resolve(socket);
       }
@@ -764,7 +752,13 @@ async function ensureVoiceSocket() {
 
 async function getVoiceLocalStream() {
   if (voiceLocalStream?.active) return voiceLocalStream;
-  voiceLocalStream = await requestVoiceMicrophoneStream();
+  const generation = voiceMediaGeneration;
+  const stream = await requestVoiceMicrophoneStream();
+  if (generation !== voiceMediaGeneration) {
+    stream.getTracks().forEach(track => track.stop());
+    throw new DOMException('Call cancelled', 'AbortError');
+  }
+  voiceLocalStream = stream;
   return voiceLocalStream;
 }
 
@@ -920,7 +914,9 @@ function createVoicePeerConnection(callId, recipientUid) {
   const peer = new RTCPeerConnection({ iceServers: voiceCallIceServers });
   voicePeerConnection = peer;
 
+  const isCurrentPeer = () => voicePeerConnection === peer && voiceCallState.callId === callId && isVoiceCallActive();
   peer.addEventListener('track', (event) => {
+    if (!isCurrentPeer()) return;
     const [remoteStream] = event.streams;
     const tracks = remoteStream?.getAudioTracks?.().length
       ? remoteStream.getAudioTracks()
@@ -934,6 +930,7 @@ function createVoicePeerConnection(callId, recipientUid) {
   });
 
   peer.addEventListener('icecandidate', (event) => {
+    if (!isCurrentPeer()) return;
     if (!event.candidate) return;
     sendVoiceSignal({
       type: 'ice-candidate',
@@ -944,6 +941,7 @@ function createVoicePeerConnection(callId, recipientUid) {
   });
 
   peer.addEventListener('connectionstatechange', () => {
+    if (!isCurrentPeer()) return;
     if (peer.connectionState === 'connected') {
       clearVoiceCallTimer();
       setVoiceCallState({ status: 'Connected', message: 'Connected. Say hello!' });
@@ -954,6 +952,7 @@ function createVoicePeerConnection(callId, recipientUid) {
   });
 
   peer.addEventListener('iceconnectionstatechange', () => {
+    if (!isCurrentPeer()) return;
     if (['connected', 'completed'].includes(peer.iceConnectionState)) {
       clearVoiceCallTimer();
       setVoiceCallState({ status: 'Connected', message: 'Connected. Say hello!' });
@@ -967,11 +966,13 @@ function createVoicePeerConnection(callId, recipientUid) {
 }
 
 async function addPendingVoiceCandidates() {
-  if (!voicePeerConnection?.remoteDescription) return;
+  const peer = voicePeerConnection;
+  if (!peer?.remoteDescription) return;
   const candidates = pendingVoiceCandidates;
   pendingVoiceCandidates = [];
   for (const candidate of candidates) {
-    await voicePeerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    if (voicePeerConnection !== peer) return;
+    await peer.addIceCandidate(new RTCIceCandidate(candidate));
   }
 }
 
@@ -1019,30 +1020,32 @@ async function startVoiceCall() {
   }
 
   resetVoiceCall();
+  const callId = createVoiceCallId();
+  const generation = voiceMediaGeneration;
+  const isCurrentAttempt = () => generation === voiceMediaGeneration && voiceCallState.callId === callId && isVoiceCallActive();
+  setVoiceCallState({
+    status: 'Calling', callId, direction: 'outgoing', recipientUid: contact.uid,
+    contact, retryAction: '', message: 'Opening the microphone...'
+  });
   let localStream;
   try {
     localStream = await getVoiceLocalStream();
   } catch (error) {
-    showVoiceMicrophoneError(error, contact, 'start');
+    if (isCurrentAttempt()) showVoiceMicrophoneError(error, contact, 'start');
     return;
   }
-  const callId = createVoiceCallId();
-  setVoiceCallState({
-    status: 'Calling',
-    callId,
-    direction: 'outgoing',
-    recipientUid: contact.uid,
-    contact,
-    retryAction: '',
-    message: `Calling ${getVoiceContactName(contact)}...`
-  });
+  if (!isCurrentAttempt()) return;
+  setVoiceCallState({message: `Calling ${getVoiceContactName(contact)}...`});
 
   try {
     await ensureVoiceSocket();
+    if (!isCurrentAttempt()) return;
     const peer = createVoicePeerConnection(callId, contact.uid);
     attachLocalVoiceTracks(peer, localStream);
     const offer = await peer.createOffer();
+    if (!isCurrentAttempt()) return;
     await peer.setLocalDescription(offer);
+    if (!isCurrentAttempt()) return;
     sendVoiceSignal({
       type: 'call-offer',
       callId,
@@ -1051,17 +1054,21 @@ async function startVoiceCall() {
     });
     startVoiceCallTimer(callId, contact.uid);
   } catch (error) {
-    finishVoiceCall('Failed', error.message || 'Voice call failed. Try again.');
+    if (isCurrentAttempt()) finishVoiceCall('Failed', error.message || 'Voice call failed. Try again.');
   }
 }
 
 async function answerVoiceCall() {
   if (voiceCallState.status !== 'Ringing' || !voiceCallState.pendingOffer || !voiceCallState.recipientUid) return;
   const { callId, recipientUid, pendingOffer } = voiceCallState;
+  const generation = voiceMediaGeneration;
+  const isCurrentAttempt = () => generation === voiceMediaGeneration && voiceCallState.callId === callId && isVoiceCallActive();
+  setVoiceCallState({status: 'Calling', message: 'Opening the microphone...'});
   let localStream;
   try {
     localStream = await getVoiceLocalStream();
   } catch (error) {
+    if (!isCurrentAttempt()) return;
     sendVoiceSignal({
       type: 'call-reject',
       callId,
@@ -1073,20 +1080,30 @@ async function answerVoiceCall() {
   }
   try {
     await ensureVoiceSocket();
+    if (!isCurrentAttempt()) return;
     const peer = createVoicePeerConnection(callId, recipientUid);
     attachLocalVoiceTracks(peer, localStream);
     await peer.setRemoteDescription(new RTCSessionDescription(pendingOffer));
+    if (!isCurrentAttempt()) return;
     await addPendingVoiceCandidates();
     const answer = await peer.createAnswer();
+    if (!isCurrentAttempt()) return;
     await peer.setLocalDescription(answer);
+    if (!isCurrentAttempt()) return;
     sendVoiceSignal({
       type: 'call-answer',
       callId,
       recipientUid,
       answer
     });
-    setVoiceCallState({ status: 'Connected', pendingOffer: null, message: 'Connected. Say hello!' });
+    if (voiceCallState.status !== 'Connected') {
+      setVoiceCallState({ status: 'Calling', pendingOffer: null, message: 'Connecting audio...' });
+    } else {
+      setVoiceCallState({ pendingOffer: null });
+    }
+    startVoiceCallTimer(callId, recipientUid);
   } catch (error) {
+    if (!isCurrentAttempt()) return;
     sendVoiceSignal({
       type: 'call-reject',
       callId,
@@ -1159,19 +1176,23 @@ async function handleVoiceSocketMessage(event) {
       pendingOffer: message.offer,
       message: `${getVoiceContactName(caller)} is calling you.`
     });
+    startVoiceCallTimer(message.callId, message.senderUid);
     return;
   }
 
-  if (message.callId !== voiceCallState.callId) return;
+  if (message.callId !== voiceCallState.callId || message.senderUid !== voiceCallState.recipientUid) return;
 
   if (message.type === 'call-answer') {
     if (!voicePeerConnection || !message.answer) return;
+    const peer = voicePeerConnection;
     try {
-      await voicePeerConnection.setRemoteDescription(new RTCSessionDescription(message.answer));
+      await peer.setRemoteDescription(new RTCSessionDescription(message.answer));
+      if (voicePeerConnection !== peer || message.callId !== voiceCallState.callId || !isVoiceCallActive()) return;
       await addPendingVoiceCandidates();
-      clearVoiceCallTimer();
-      setVoiceCallState({ status: 'Connected', message: 'Connected. Say hello!' });
+      if (voicePeerConnection !== peer || message.callId !== voiceCallState.callId || !isVoiceCallActive()) return;
+      if (voiceCallState.status !== 'Connected') setVoiceCallState({ status: 'Calling', message: 'Connecting audio...' });
     } catch (error) {
+      if (voicePeerConnection !== peer || message.callId !== voiceCallState.callId || !isVoiceCallActive()) return;
       finishVoiceCall('Failed', error.message || 'Could not connect the voice call.');
     }
     return;
@@ -1361,6 +1382,7 @@ function renderUserPhoto(user, extraClass = '') {
 }
 
 function renderAuthGate() {
+  appShell.inert = !authReady || !currentAuthUser || !isCurrentUserApproved();
   const configured = getFirebaseSetupStatus().configured;
   if (!authReady) {
     appShell.classList.add('auth-locked');
@@ -1388,7 +1410,7 @@ function renderAuthGate() {
       <img src="app-icon.svg" alt="" />
       <h1>Kids WhatsApp 2026</h1>
       <p>A colorful, private place for family and friends after Google sign-in.</p>
-      ${authError ? `<small class="auth-error">${authError}</small>` : ''}
+      ${authError ? `<small class="auth-error">${escapeHtml(authError)}</small>` : ''}
       ${configured
         ? '<button class="google-sign-in" type="button" data-auth-sign-in>Sign in with Google</button>'
         : '<small class="auth-error">Setup is not ready yet. Ask a parent to add the app keys.</small>'}
@@ -1451,6 +1473,7 @@ async function handleGoogleLogout() {
 function renderFamilyAccessGate() {
   if (!currentAuthUser || isCurrentUserApproved()) return false;
   appShell.classList.add('auth-locked');
+  appShell.inert = true;
   authGate.classList.remove('hidden');
   authGate.innerHTML = `
     <div class="auth-card family-gate">
@@ -1464,6 +1487,8 @@ function renderFamilyAccessGate() {
 }
 
 function renderSignedInUser() {
+  const railProfile = document.querySelector('.rail .profile');
+  if (railProfile) railProfile.textContent = currentAuthUser ? getUserAvatar(currentAuthUser) : 'KW';
   if (!signedInUser) return;
   if (!currentAuthUser) {
     signedInUser.innerHTML = '';
@@ -1487,6 +1512,13 @@ function renderSignedInUser() {
       ${renderPresenceStatus(currentPresenceStatus || 'online', 'mini')}
     </span>
   `;
+}
+
+function forCurrentAccount(callback) {
+  const generation = authGeneration;
+  return (...args) => {
+    if (generation === authGeneration && isCurrentUserApproved()) return callback(...args);
+  };
 }
 
 function requireAuth() {
@@ -1728,7 +1760,7 @@ function renderFriendSearchRows(emptyMessage) {
 
 function getJoinableGroups() {
   return availableGroups
-    .filter((group) => group?.id && group.type === 'group' && !groupIncludesCurrentUser(group))
+    .filter((group) => group?.id && group.type === 'group' && (!groupIncludesCurrentUser(group) || state.deletedContactIds?.includes(group.id)))
     .sort((first, second) => (first.groupName ?? '').localeCompare(second.groupName ?? ''));
 }
 
@@ -1736,12 +1768,14 @@ function renderJoinableGroupRows() {
   const groups = getJoinableGroups();
   if (!groups.length) return '';
   return `
-    <h3 class="user-list-heading">Groups you can join</h3>
+    <h3 class="user-list-heading">Groups</h3>
     ${groups.map((group) => {
       const request = getOwnJoinRequestForGroup(group.id);
       const status = request?.status ?? '';
       const buttonLabel = status === 'rejected' ? 'Ask again' : 'Request to join';
-      const statusLabel = status === 'pending'
+      const statusLabel = groupIncludesCurrentUser(group)
+        ? `<button class="mini-action-button" type="button" data-open-existing-group="${escapeAttribute(group.id)}">Open chat</button>`
+        : status === 'pending'
         ? '<span class="join-status waiting">Waiting for host</span>'
         : status === 'approved'
           ? '<span class="join-status approved">Joining now...</span>'
@@ -1842,7 +1876,7 @@ function renderCreateGroupForm() {
     <form class="business-profile-form create-group-form" id="createGroupForm">
       <div class="detail-illustration"></div>
       <h2>Create Group</h2>
-      <p>Choose at least 1 friend, then start a safe group chat.</p>
+      <p>Choose at least 1 friend (up to 9), then start a safe group chat.</p>
       <label class="profile-field">
         <span>Group name</span>
         <input name="groupName" type="text" autocomplete="off" maxlength="40" placeholder="Family Team" required />
@@ -1868,7 +1902,7 @@ function renderFriendSearchForm(autoListMessage) {
     <div class="friend-search-form" id="friendSearchForm">
       <label class="friend-search">
         <span>Search friends</span>
-        <input id="friendSearchInput" data-friend-search-input type="search" autocomplete="off" value="${escapeAttribute(friendSearchQuery)}" placeholder="Search friends, groups, or messages" />
+        <input id="friendSearchInput" data-friend-search-input type="search" autocomplete="off" value="${escapeAttribute(friendSearchQuery)}" placeholder="Search friends by name or email" />
       </label>
     </div>
     <div class="auth-user-list friend-search-results">
@@ -1883,10 +1917,6 @@ function renderFriendsInvitesPanel() {
   if (!friendsInvitesPanel) return;
   friendsInvitesPanel.innerHTML = `
     <div class="friends-invites-shell">
-      <div class="invite-friend-intro">
-        <h3>Friends & Invites</h3>
-        <p>Approved Google friends, pending invites, and family approvals live here.</p>
-      </div>
       ${renderFriendSearchForm('No approved family yet. Invite by Gmail, then approve them after they sign in.')}
     </div>
   `;
@@ -1945,18 +1975,19 @@ function renderSettingsPage(pageId) {
           .map((item, index) => {
             const key = `${pageId}-${index}`;
             const enabled = settingSwitches.has(key) ? settingSwitches.get(key) : item.enabled;
+            const previewOnly = (item.type === 'toggle' && !['Read receipts', 'Enter is send'].includes(item.label)) || (item.type === 'action' && !['Parent help', 'Kind chat help', 'Cancel', 'App info'].includes(item.label));
             const rowClass = item.type === 'danger' ? 'nested-row danger-row' : 'nested-row';
             const control =
               item.type === 'toggle'
-                ? `<span class="switch ${enabled ? 'on' : ''}" aria-hidden="true"></span>`
+                ? `<span class="switch ${!previewOnly && enabled ? 'on' : ''}" aria-hidden="true"></span>`
                 : item.type === 'shortcut'
                   ? `<kbd>${item.detail}</kbd>`
                   : '<span class="chevron">›</span>';
             return `
-              <button class="${rowClass}" data-setting-item="${key}" data-setting-type="${item.type}" data-setting-label="${item.label}">
+              <button class="${rowClass}" data-setting-item="${key}" data-setting-type="${item.type}" data-setting-label="${item.label}" ${previewOnly ? 'disabled aria-disabled="true"' : ''}>
                 <span>
-                  <strong>${item.label}</strong>
-                  <small>${item.detail}</small>
+                  <strong>${item.label}${previewOnly ? ' <span class="preview-label">Preview</span>' : ''}</strong>
+                  <small>${previewOnly ? 'Not available yet. This option does not change the app.' : item.detail}</small>
                 </span>
                 ${control}
               </button>
@@ -2071,7 +2102,7 @@ function renderSettingsScrollableContent() {
   return `
       <div class="settings-notice" data-action="chooseNotifications">
         <span class="line-icon bulb-icon"></span>
-        <span><strong>Choose your notifications</strong><small>Get notifications for chats, groups, and calls. <b>Choose now</b></small></span>
+        <span><strong>Notification settings preview</strong><small>These options are not available yet. <b>View settings</b></small></span>
         <button data-settings-dismiss aria-label="Dismiss settings notice">x</button>
       </div>
       <button class="profile-row" data-open-profile>
@@ -2124,6 +2155,9 @@ function renderChats() {
     filter: currentFilter
   });
 
+  const badge = document.querySelector('.rail .badge');
+  const unread = state.contacts.reduce((total, contact) => total + (Number(contact.unread) || 0), 0);
+  if (badge) { badge.textContent = String(unread); badge.classList.toggle('hidden', unread === 0); }
   const query = searchInput.value.trim();
   const heading = query ? 'Search results' : 'Recent chats';
   const isGroupsFilter = currentFilter === 'groups';
@@ -2140,17 +2174,17 @@ function renderChats() {
         ? contacts
             .map(
               (contact) => `
-        <div class="chat-item ${contact.id === state.activeContactId ? 'active' : ''}" data-contact-id="${contact.id}">
-          <button class="chat-main" type="button" data-contact-open="${contact.id}">
+        <div class="chat-item ${contact.id === state.activeContactId ? 'active' : ''}" data-contact-id="${escapeAttribute(contact.id)}">
+          <button class="chat-main" type="button" data-contact-open="${escapeAttribute(contact.id)}">
             ${renderContactAvatar(contact)}
-            <span class="chat-copy" data-contact-menu="${contact.id}">
+            <span class="chat-copy" data-contact-menu="${escapeAttribute(contact.id)}">
               <span class="chat-title-row">
                 <span class="chat-name-wrap">
-                  <span class="chat-name">${contact.name}</span>
+                  <span class="chat-name">${escapeHtml(contact.name)}</span>
                   ${renderContactStatus(contact, 'compact')}
                   ${contact.groupId && getPendingGroupJoinRequestCount(contact.groupId) ? `<span class="pending-request-badge">${getPendingGroupJoinRequestCount(contact.groupId)}</span>` : ''}
                 </span>
-                <span class="chat-time">${contact.time}</span>
+                <span class="chat-time">${escapeHtml(contact.time)}</span>
               </span>
               <span class="chat-preview">${escapeHtml(contact.deleted ? 'This message was deleted' : getStickerPreviewText(contact.preview))}</span>
             </span>
@@ -2165,29 +2199,8 @@ function renderChats() {
   `;
 }
 
-function renderConversation() {
-  const contact = getActiveContact(state);
-  if (!contact?.uid && !contact?.groupId) {
-    renderNoChatSelected();
-    return;
-  }
-
-  emptyState.classList.add('hidden');
-  conversation.classList.remove('hidden');
-  conversation.innerHTML = `
-    <header class="conversation-header">
-      <button class="mobile-chat-back" type="button" aria-label="Back to chats" data-mobile-chat-back>‹</button>
-      ${renderContactAvatar(contact, 'small')}
-      <span class="conversation-title">
-        <strong>${contact.name}</strong>
-        <small>${renderContactStatus(contact)}</small>
-      </span>
-      <span class="conversation-actions">
-        <button title="Voice call" aria-label="Voice call" data-action="voiceCall">Call</button>
-      </span>
-    </header>
-    <div class="messages" id="messages">
-      ${contact.messages
+function renderMessageBubbles(contact) {
+  return contact.messages
         .map(
           (message) => {
             const direction = message.senderId
@@ -2206,15 +2219,59 @@ function renderConversation() {
               : '';
             const sticker = message.deleted ? null : getStickerFromText(message.text);
             return `
-              <div class="bubble ${direction} ${message.deleted ? 'deleted' : ''} ${sticker ? 'sticker-bubble' : ''}" data-message-id="${message.id}" data-contact-id="${contact.id}">
+              <div class="bubble ${direction} ${message.deleted ? 'deleted' : ''} ${sticker ? 'sticker-bubble' : ''}" data-message-id="${escapeAttribute(message.id)}" data-contact-id="${escapeAttribute(contact.id)}">
                 ${message.senderDisplayName ? `<strong class="sender-label">${escapeHtml(message.senderDisplayName)}</strong>` : ''}
-                ${message.deleted ? 'This message was deleted' : renderStickerMessage(message.text)}
-                <time>${status}${message.time}</time>
+                <span class="message-text">${message.deleted ? 'This message was deleted' : renderStickerMessage(message.text)}</span>
+                <time>${status}${escapeHtml(message.time)}</time>
               </div>
             `;
           }
         )
-        .join('')}
+        .join('');
+}
+
+function refreshConversationMessages() {
+  const messages = conversation.querySelector('#messages');
+  const contact = getActiveContact(state);
+  if (!messages || !contact || conversation.classList.contains('hidden')) return;
+  const nearBottom = messages.scrollHeight - messages.scrollTop - messages.clientHeight < 80;
+  const scrollTop = messages.scrollTop;
+  messages.innerHTML = renderMessageBubbles(contact);
+  messages.scrollTop = nearBottom ? messages.scrollHeight : scrollTop;
+}
+
+function renderLiveUpdate() {
+  if (isTextEntryActive() || pendingMessageSends.has(state.activeContactId)) {
+    renderChats();
+    refreshConversationMessages();
+    return;
+  }
+  renderAll();
+}
+
+function renderConversation() {
+  const contact = getActiveContact(state);
+  if (!contact?.uid && !contact?.groupId) {
+    renderNoChatSelected();
+    return;
+  }
+
+  emptyState.classList.add('hidden');
+  conversation.classList.remove('hidden');
+  conversation.innerHTML = `
+    <header class="conversation-header">
+      <button class="mobile-chat-back" type="button" aria-label="Back to chats" data-mobile-chat-back>‹</button>
+      ${renderContactAvatar(contact, 'small')}
+      <span class="conversation-title">
+        <strong>${escapeHtml(contact.name)}</strong>
+        <small>${renderContactStatus(contact)}</small>
+      </span>
+      <span class="conversation-actions">
+        <button title="Voice call" aria-label="Voice call" data-action="voiceCall">Call</button>
+      </span>
+    </header>
+    <div class="messages" id="messages">
+      ${renderMessageBubbles(contact)}
     </div>
     <form class="composer" id="composer">
       <span class="emoji-tools">
@@ -2233,23 +2290,28 @@ function renderConversation() {
           ${renderStickerPickerButtons()}
         </span>
       </span>
-      <textarea id="messageInput" rows="1" autocomplete="off" placeholder="Type a message" spellcheck="true"></textarea>
-      <button type="submit" title="Send" aria-label="Send">➤</button>
+      <textarea id="messageInput" maxlength="4000" rows="1" autocomplete="off" placeholder="Type a message" spellcheck="true"></textarea>
+      <button type="submit" title="Send" aria-label="Send" ${pendingMessageSends.has(contact.id) ? 'disabled' : ''}>➤</button>
     </form>
   `;
 
+  const draftInput = conversation.querySelector('#messageInput');
+  draftInput.value = messageDrafts.get(contact.id) ?? '';
   const messages = conversation.querySelector('#messages');
   messages.scrollTop = messages.scrollHeight;
   const resizeComposer = () => {
-    const input = conversation.querySelector('#messageInput');
+    const input = draftInput;
     input.style.height = 'auto';
     input.style.height = `${Math.min(input.scrollHeight, 160)}px`;
   };
-  conversation.querySelector('#messageInput').addEventListener('input', resizeComposer);
+  conversation.querySelector('#messageInput').addEventListener('input', () => {
+    messageDrafts.set(contact.id, draftInput.value);
+    resizeComposer();
+  });
   conversation.querySelector('#messageInput').addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+    if (event.key === 'Enter' && !event.isComposing && (event.ctrlKey || event.metaKey || settingSwitches.get('chatsSettings-2'))) {
       event.preventDefault();
-      conversation.querySelector('#composer').requestSubmit();
+      event.currentTarget.closest('form').requestSubmit();
     }
   });
   conversation.querySelector('[data-emoji-toggle]').addEventListener('click', () => {
@@ -2279,24 +2341,52 @@ function renderConversation() {
     if (!requireAuth()) return;
     const input = conversation.querySelector('#messageInput');
     const text = input.value;
+    if (!text.trim() || pendingMessageSends.has(contact.id)) return;
     const activeContact = getActiveContact(state);
     if (!activeContact?.uid && !activeContact?.groupId) {
       showToast('Choose a signed-in friend or group first.');
       return;
     }
+    const sendingGeneration = authGeneration;
+    const sendingUser = currentAuthUser;
+    const pendingSend = {generation: sendingGeneration, text};
+    pendingMessageSends.set(activeContact.id, pendingSend);
+    event.target.dataset.sending = 'true';
+    const sendButton = event.target.querySelector('button[type=submit]');
+    sendButton.disabled = true;
     try {
       if (activeContact.groupId) {
-        await sendFirebaseGroupMessage(activeContact.groupId, text, currentAuthUser);
+        await sendFirebaseGroupMessage(activeContact.groupId, text, sendingUser);
       } else {
-        await sendFirebaseMessage(activeContact.uid, text, currentAuthUser);
+        await sendFirebaseMessage(activeContact.uid, text, sendingUser);
       }
     } catch (error) {
       showFirebaseError(error);
       return;
+    } finally {
+      event.target.dataset.sending = 'false';
+      sendButton.disabled = false;
+      if (pendingMessageSends.get(activeContact.id) === pendingSend) {
+        pendingMessageSends.delete(activeContact.id);
+        if (state.activeContactId === activeContact.id) {
+          const currentButton = conversation.querySelector('button[type=submit]');
+          if (currentButton) currentButton.disabled = false;
+        }
+      }
     }
-    input.value = '';
-    renderAll();
-    conversation.querySelector('#messageInput').focus();
+    if (sendingGeneration !== authGeneration || !isCurrentUserApproved()) return;
+    if (input.value === text) {
+      input.value = '';
+      if (messageDrafts.get(activeContact.id) === text) messageDrafts.delete(activeContact.id);
+      if (state.activeContactId === activeContact.id) {
+        const currentInput = conversation.querySelector('#messageInput');
+        if (currentInput?.value === text) currentInput.value = '';
+      }
+    }
+    // A reply can arrive while sending; preserve a newly typed draft and focus.
+    resizeComposer();
+    refreshConversationMessages();
+    if (document.body.contains(input)) input.focus();
   });
 
   messages.addEventListener('contextmenu', (event) => {
@@ -2414,6 +2504,64 @@ function openKidProfilePage() {
   renderAll();
 }
 
+function isConversationVisible(contactId) {
+  return !document.hidden && state.activeSection === 'chats' && !activeAction
+    && state.activeContactId === contactId && conversation.getClientRects().length > 0;
+}
+
+function applyContactMessages(contactId, messages) {
+  const uid = currentAuthUser?.uid;
+  if (!uid) return;
+  state = {...state, contacts: state.contacts.map(contact => {
+    if (contact.id !== contactId) return contact;
+    const incoming = messages.filter(message => !message.deleted && message.senderUid !== uid);
+    const seen = new Set(contact.seenMessageIds ?? []);
+    if (isConversationVisible(contactId)) incoming.forEach(message => seen.add(message.id));
+    const unread = incoming.filter(message => !seen.has(message.id) && !message.readBy?.includes(uid)).length;
+    return {...contact, messages, unread, seenMessageIds: [...seen],
+      preview: messages.at(-1)?.deleted ? 'This message was deleted'
+        : getStickerPreviewText(messages.at(-1)?.text ?? (contact.group ? getGroupMemberLabel(contact) : contact.email)),
+      time: messages.at(-1)?.time ?? contact.time};
+  })};
+  saveChatState();
+  renderLiveUpdate();
+}
+
+function syncUnreadSubscriptions(user) {
+  const ids = new Set(state.contacts.map(contact => contact.id));
+  for (const [id, unsubscribe] of unreadSubscriptions) {
+    if (!ids.has(id)) { unsubscribe(); unreadSubscriptions.delete(id); }
+  }
+  const generation = familySubscriptionGeneration;
+  for (const contact of state.contacts) {
+    if (unreadSubscriptions.has(contact.id) || (!contact.uid && !contact.groupId)) continue;
+    const onMessages = messages => {
+      if (generation !== familySubscriptionGeneration || currentAuthUser?.uid !== user.uid || !isCurrentUserApproved()) return;
+      applyContactMessages(contact.id, messages);
+    };
+    const unsubscribe = contact.groupId
+      ? subscribeGroupMessages(contact.groupId, user.uid, onMessages, showFirebaseError, () => false)
+      : subscribeConversationMessages(user.uid, contact.uid, onMessages, showFirebaseError, () => false);
+    unreadSubscriptions.set(contact.id, unsubscribe);
+  }
+}
+
+function stopApprovedFamilyLists() {
+  familySubscriptionGeneration++;
+  unsubscribeUsers();
+  unsubscribePendingFamilyUsers();
+  unsubscribeFamilyInvites();
+  unsubscribeConversation();
+  unsubscribeGroups();
+  unsubscribeAvailableGroups();
+  unsubscribeOwnGroupJoinRequests();
+  unsubscribeManagedGroupJoinRequests();
+  for (const unsubscribe of unreadSubscriptions.values()) unsubscribe();
+  unreadSubscriptions.clear();
+  subscribedConversationContactId = '';
+  familyListsStarted = false;
+}
+
 function subscribeActiveConversation() {
   const activeContact = getActiveContact(state);
   const subscriptionKey = activeContact?.groupId
@@ -2421,33 +2569,29 @@ function subscribeActiveConversation() {
     : activeContact?.uid
       ? `user:${activeContact.uid}`
       : '';
-  if (!currentAuthUser || !subscriptionKey || subscribedConversationContactId === subscriptionKey) return;
+  if (!currentAuthUser || !subscriptionKey || !isConversationVisible(activeContact.id) || !isCurrentUserApproved()) {
+    unsubscribeConversation();
+    subscribedConversationContactId = '';
+    return;
+  }
+  if (subscribedConversationContactId === subscriptionKey) return;
   unsubscribeConversation();
   subscribedConversationContactId = subscriptionKey;
+  const generation = authGeneration;
   const applyMessages = (messages) => {
-      state = {
-        ...state,
-        contacts: state.contacts.map((contact) =>
-          contact.id === activeContact.id
-            ? {
-                ...contact,
-                messages,
-                preview: messages.at(-1)?.deleted
-                  ? 'This message was deleted'
-                  : getStickerPreviewText(messages.at(-1)?.text ?? (contact.group ? getGroupMemberLabel(contact) : contact.email)),
-                time: messages.at(-1)?.time ?? contact.time
-              }
-            : contact
-        )
-      };
-      if (!isTextEntryActive()) renderAll();
+    if (generation !== authGeneration || !isCurrentUserApproved() || subscribedConversationContactId !== subscriptionKey) return;
+    applyContactMessages(activeContact.id, messages);
   };
   unsubscribeConversation = activeContact.groupId
-    ? subscribeGroupMessages(activeContact.groupId, currentAuthUser.uid, applyMessages, showFirebaseError)
-    : subscribeConversationMessages(currentAuthUser.uid, activeContact.uid, applyMessages, showFirebaseError);
+    ? subscribeGroupMessages(activeContact.groupId, currentAuthUser.uid, applyMessages, showFirebaseError, () => isConversationVisible(activeContact.id) && settingSwitches.get('privacy-0') !== false)
+    : subscribeConversationMessages(currentAuthUser.uid, activeContact.uid, applyMessages, showFirebaseError, () => isConversationVisible(activeContact.id) && settingSwitches.get('privacy-0') !== false);
 }
 
 function renderAll() {
+  if (state.activeSection !== 'chats' || activeAction || document.hidden) {
+    unsubscribeConversation();
+    subscribedConversationContactId = '';
+  }
   renderAuthGate();
   renderSignedInUser();
   if (!authReady) return;
@@ -2469,48 +2613,6 @@ function renderAll() {
     renderConversation();
     subscribeActiveConversation();
   }
-}
-
-async function hydrateChatsFromServer() {
-  if (!authReady || currentAuthUser) return;
-  const serverState = await loadServerChatState();
-  if (!Array.isArray(serverState.contacts) || !serverState.contacts.length) return;
-  const serverSnapshot = stringifyChatPayload({
-    activeContactId: serverState.activeContactId,
-    deletedContactIds: serverState.deletedContactIds ?? [],
-    contacts: serverState.contacts
-  });
-  if (serverSnapshot === lastChatSnapshot) return;
-
-  const syncedState = createInitialState(serverState);
-  state = {
-    ...state,
-    activeContactId: syncedState.contacts.some((contact) => contact.id === state.activeContactId)
-      ? state.activeContactId
-      : syncedState.activeContactId,
-    deletedContactIds: syncedState.deletedContactIds,
-    contacts: syncedState.contacts
-  };
-  rememberChatSnapshot({
-    activeContactId: syncedState.activeContactId,
-    deletedContactIds: syncedState.deletedContactIds,
-    contacts: syncedState.contacts
-  });
-  try {
-    saveLocalChatState(getPersistedChatPayload());
-  } catch {
-    // Browser storage can be unavailable in incognito.
-  }
-  if (activeAction === 'newChat') return;
-  if (isTextEntryActive()) return;
-  renderAll();
-}
-
-function startLiveChatSync() {
-  window.setInterval(() => {
-    if (isSavingChats) return;
-    hydrateChatsFromServer();
-  }, syncIntervalMs);
 }
 
 function showToast(text) {
@@ -2664,7 +2766,8 @@ function showEditGroupDialog(contactId) {
 
 function showMessageMenu(contactId, messageId, anchor = {}) {
   const message = getMessageById(contactId, messageId);
-  if (!message) return;
+  closeMessageMenu();
+  if (!message || message.deleted || message.senderUid !== currentAuthUser?.uid) return;
   closeMessageMenu();
   closeContactMenu();
   activeMessageMenu = { contactId, messageId };
@@ -2673,8 +2776,8 @@ function showMessageMenu(contactId, messageId, anchor = {}) {
   menu.className = 'message-context-menu contact-context-menu';
   menu.setAttribute('role', 'menu');
   menu.innerHTML = `
-    <button type="button" data-message-menu-action="edit" data-contact-id="${contactId}" data-message-id="${messageId}">Edit message</button>
-    <button type="button" class="danger-row" data-message-menu-action="delete" data-contact-id="${contactId}" data-message-id="${messageId}">Delete message</button>
+    <button type="button" data-message-menu-action="edit" data-contact-id="${escapeAttribute(contactId)}" data-message-id="${escapeAttribute(messageId)}">Edit message</button>
+    <button type="button" class="danger-row" data-message-menu-action="delete" data-contact-id="${escapeAttribute(contactId)}" data-message-id="${escapeAttribute(messageId)}">Delete message</button>
   `;
   document.body.append(menu);
 
@@ -2701,7 +2804,7 @@ function showEditMessageDialog(contactId, messageId) {
   backdrop.innerHTML = `
     <section class="action-dialog menu-dialog" role="dialog" aria-label="Edit message">
       <button class="dialog-close" aria-label="Close">x</button>
-      <form class="business-profile-form dialog-form" id="editMessageForm" data-contact-id="${contactId}" data-message-id="${messageId}">
+      <form class="business-profile-form dialog-form" id="editMessageForm" data-contact-id="${escapeAttribute(contactId)}" data-message-id="${escapeAttribute(messageId)}">
         <h2>Edit message</h2>
         <p>Change this message text.</p>
         <div class="business-fields">
@@ -2895,18 +2998,6 @@ function openAction(actionId) {
 }
 
 chatList.addEventListener('click', (event) => {
-  const menuTrigger = event.target.closest('[data-contact-menu]');
-  if (menuTrigger) {
-    event.preventDefault();
-    event.stopPropagation();
-    const bounds = menuTrigger.getBoundingClientRect();
-    showContactMenu(menuTrigger.dataset.contactMenu, {
-      x: bounds.left + 20,
-      y: bounds.bottom + 6
-    });
-    return;
-  }
-
   const item = event.target.closest('[data-contact-open], [data-contact-id]');
   if (!item) return;
   closeContactMenu();
@@ -2964,7 +3055,9 @@ document.addEventListener('click', (event) => {
   if (event.target.closest('[data-settings-dismiss]')) return;
 
   if (event.target.closest('[data-auth-sign-in]')) {
+    const generation = authGeneration;
     signInWithGoogle().catch((error) => {
+      if (generation !== authGeneration) return;
       authError = error.message;
       renderAuthGate();
     });
@@ -2985,7 +3078,23 @@ document.addEventListener('click', (event) => {
   if (approveFamilyButton) {
     approveFamilyMember(approveFamilyButton.dataset.approveFamilyUser, currentAuthUser)
       .then(() => showToast('Family member approved'))
-      .catch(showFirebaseError);
+      .catch(forCurrentAccount(showFirebaseError));
+    return;
+  }
+
+  const openExistingGroup = event.target.closest('[data-open-existing-group]');
+  if (openExistingGroup) {
+    const groupId = openExistingGroup.dataset.openExistingGroup;
+    const group = firebaseGroups.find(item => item.id === groupId);
+    if (!group || !groupIncludesCurrentUser(group)) return;
+    state = {...state, deletedContactIds: state.deletedContactIds.filter(id => id !== groupId)};
+    state = reconcileAuthenticatedContacts(state, authenticatedUsers, currentAuthUser.uid, firebaseGroups);
+    state = selectContact(state, groupId);
+    activeAction = null;
+    mobileConversationOpen = true;
+    syncUnreadSubscriptions(currentAuthUser);
+    saveChatState();
+    renderAll();
     return;
   }
 
@@ -2998,7 +3107,7 @@ document.addEventListener('click', (event) => {
     }
     showToast('Sending join request...');
     requestGroupJoin(group, currentAuthUser)
-      .then((request) => {
+      .then(forCurrentAccount((request) => {
         if (request?.duplicate) {
           showToast('You already asked to join. Waiting for host.');
           return;
@@ -3008,8 +3117,8 @@ document.addEventListener('click', (event) => {
           return;
         }
         showToast('Join request sent. Waiting for host.');
-      })
-      .catch(showFirebaseError);
+      }))
+      .catch(forCurrentAccount(showFirebaseError));
     return;
   }
 
@@ -3022,11 +3131,11 @@ document.addEventListener('click', (event) => {
     }
     showToast('Approving join request...');
     approveGroupJoinRequest(request, currentAuthUser)
-      .then(() => {
+      .then(forCurrentAccount(() => {
         closeContactMenu();
         showToast('Group join approved');
-      })
-      .catch(showFirebaseError);
+      }))
+      .catch(forCurrentAccount(showFirebaseError));
     return;
   }
 
@@ -3039,11 +3148,11 @@ document.addEventListener('click', (event) => {
     }
     showToast('Rejecting join request...');
     rejectGroupJoinRequest(request, currentAuthUser)
-      .then(() => {
+      .then(forCurrentAccount(() => {
         closeContactMenu();
         showToast('Group join rejected');
-      })
-      .catch(showFirebaseError);
+      }))
+      .catch(forCurrentAccount(showFirebaseError));
     return;
   }
 
@@ -3084,7 +3193,7 @@ document.addEventListener('click', (event) => {
         return;
       }
       deleteFirebaseGroup(contact.groupId, currentAuthUser)
-        .then(() => {
+        .then(forCurrentAccount(() => {
           firebaseGroups = firebaseGroups.filter((group) => group.id !== contact.groupId);
           state = deleteContactChat(state, contactId);
           state = reconcileAuthenticatedContacts(state, authenticatedUsers, currentAuthUser.uid, firebaseGroups);
@@ -3092,7 +3201,7 @@ document.addEventListener('click', (event) => {
           saveChatState();
           renderAll();
           showToast('Group deleted');
-        })
+        }))
         .catch((error) => showFirebaseError(error, 'deleteGroup'));
       return;
     }
@@ -3112,11 +3221,14 @@ document.addEventListener('click', (event) => {
       showEditMessageDialog(contactId, messageId);
       return;
     }
-    state = deleteMessage(state, contactId, messageId);
-    closeMessageMenu();
-    saveChatState();
-    renderAll();
-    showToast('Message deleted');
+    deleteFirebaseMessage(getContactById(contactId), messageId, currentAuthUser)
+      .then(forCurrentAccount(() => {
+        state = deleteMessage(state, contactId, messageId);
+        closeMessageMenu();
+        saveChatState();
+        renderLiveUpdate();
+        showToast('Message deleted');
+      })).catch(forCurrentAccount(showFirebaseError));
     return;
   }
 
@@ -3246,6 +3358,7 @@ document.addEventListener('click', (event) => {
     const key = settingItem.dataset.settingItem;
     const current = settingItem.querySelector('.switch')?.classList.contains('on') ?? false;
     settingSwitches.set(key, !current);
+    saveSettingSwitches();
     renderAll();
     showToast(`${label} ${!current ? 'on' : 'off'}`);
     return;
@@ -3275,7 +3388,7 @@ document.addEventListener('input', (event) => {
   if (friendSearchInput) {
     friendSearchQuery = friendSearchInput.value;
     const results = document.querySelector('.friend-search-results');
-    if (results) results.innerHTML = renderFriendSearchRows('Ask your friend to sign in once.');
+    if (results) results.innerHTML = renderJoinableGroupRows() + renderFriendSearchRows('Ask your friend to sign in once.');
   }
 });
 
@@ -3283,6 +3396,11 @@ document.addEventListener('change', (event) => {
   const groupMemberInput = event.target.closest('[data-group-member]');
   if (!groupMemberInput) return;
   if (groupMemberInput.checked) {
+    if (selectedGroupMemberIds.size >= 9) {
+      groupMemberInput.checked = false;
+      showToast('Choose up to 9 friends for a group.');
+      return;
+    }
     selectedGroupMemberIds.add(groupMemberInput.value);
   } else {
     selectedGroupMemberIds.delete(groupMemberInput.value);
@@ -3308,11 +3426,11 @@ document.addEventListener('submit', (event) => {
     const formData = new FormData(familyInviteForm);
     const email = String(formData.get('email') ?? '');
     sendFamilyInvite(email, currentAuthUser)
-      .then(() => {
+      .then(forCurrentAccount(() => {
         familyInviteForm.reset();
         showToast('Invite saved. Ask them to sign in once.');
-      })
-      .catch(showFirebaseError);
+      }))
+      .catch(forCurrentAccount(showFirebaseError));
     return;
   }
 
@@ -3349,7 +3467,7 @@ document.addEventListener('submit', (event) => {
       return;
     }
     createFirebaseGroup({ groupName, memberUids }, currentAuthUser)
-      .then((group) => {
+      .then(forCurrentAccount((group) => {
         firebaseGroups = [group, ...firebaseGroups.filter((item) => item.id !== group.id)];
         state = reconcileAuthenticatedContacts(state, authenticatedUsers, currentAuthUser.uid, firebaseGroups);
         state = selectContact(state, group.id);
@@ -3362,14 +3480,14 @@ document.addEventListener('submit', (event) => {
         saveChatState();
         renderAll();
         showToast('Group created');
-      })
-      .catch((error) => {
+      }))
+      .catch(forCurrentAccount((error) => {
         selectedGroupMemberIds = new Set();
         activeContactMenuId = null;
         closeContactMenu();
         renderAll();
         showFirebaseError(error, 'createGroup');
-      });
+      }));
     return;
   }
 
@@ -3390,7 +3508,7 @@ document.addEventListener('submit', (event) => {
       return;
     }
     updateFirebaseGroupName(groupId, groupName, currentAuthUser)
-      .then((group) => {
+      .then(forCurrentAccount((group) => {
         firebaseGroups = firebaseGroups.map((item) => (item.id === group.id ? { ...item, ...group } : item));
         state = reconcileAuthenticatedContacts(state, authenticatedUsers, currentAuthUser.uid, firebaseGroups);
         state = selectContact(state, group.id);
@@ -3398,7 +3516,7 @@ document.addEventListener('submit', (event) => {
         saveChatState();
         renderAll();
         showToast('Group name saved');
-      })
+      }))
       .catch((error) => showFirebaseError(error, 'editGroup'));
     return;
   }
@@ -3412,16 +3530,16 @@ document.addEventListener('submit', (event) => {
       showToast('Enter a message');
       return;
     }
-    state = updateMessage(
-      state,
-      editMessageForm.dataset.contactId,
-      editMessageForm.dataset.messageId,
-      message
-    );
-    saveChatState();
-    editMessageForm.closest('.action-dialog-backdrop')?.remove();
-    renderAll();
-    showToast('Message saved');
+    const contactId = editMessageForm.dataset.contactId;
+    const messageId = editMessageForm.dataset.messageId;
+    updateFirebaseMessage(getContactById(contactId), messageId, message, currentAuthUser)
+      .then(forCurrentAccount(() => {
+        state = updateMessage(state, contactId, messageId, message);
+        saveChatState();
+        editMessageForm.closest('.action-dialog-backdrop')?.remove();
+        renderLiveUpdate();
+        showToast('Message saved');
+      })).catch(forCurrentAccount(showFirebaseError));
     return;
   }
 
@@ -3465,7 +3583,7 @@ function applyVoicePresence(message) {
     : presenceItems.map((item) => item?.uid);
   voiceOnlineUserIds = new Set(onlineUids.filter(Boolean));
   if (currentAuthUser?.uid && voiceOnlineUserIds.has(currentAuthUser.uid)) {
-    currentPresenceStatus = 'online';
+    currentPresenceStatus = document.hidden ? 'away' : 'online';
   }
   renderSignedInUser();
   if (authReady && currentAuthUser && !isTextEntryActive()) {
@@ -3505,23 +3623,26 @@ function syncApprovedFamilyContacts(user) {
     state = { ...state, activeContactId: activeContactIdBeforeSync };
   }
   chatsLoading = !areApprovedChatListsReady();
+  syncUnreadSubscriptions(user);
   saveChatState();
-  renderAll();
+  renderLiveUpdate();
 }
 
 function restartManagedGroupJoinRequestSubscription(user = currentAuthUser) {
   unsubscribeManagedGroupJoinRequests();
   pendingGroupJoinRequests = [];
   if (!user?.uid) {
-    renderAll();
+    renderLiveUpdate();
     return;
   }
+  const generation = familySubscriptionGeneration;
   unsubscribeManagedGroupJoinRequests = subscribeManagedGroupJoinRequests(
-    firebaseGroups,
+    [...firebaseGroups, ...availableGroups],
     user,
     (requests) => {
+      if (generation !== familySubscriptionGeneration || currentAuthUser?.uid !== user.uid || !isCurrentUserApproved()) return;
       pendingGroupJoinRequests = requests;
-      renderAll();
+      renderLiveUpdate();
     },
     (error) => showFirebaseError(error)
   );
@@ -3530,64 +3651,69 @@ function restartManagedGroupJoinRequestSubscription(user = currentAuthUser) {
 function startApprovedFamilyLists(user) {
   if (familyListsStarted) return;
   familyListsStarted = true;
+  const generation = ++familySubscriptionGeneration;
+  const guard = callback => (...args) => {
+    if (generation === familySubscriptionGeneration && currentAuthUser?.uid === user.uid && isCurrentUserApproved()) callback(...args);
+  };
   resetApprovedChatLoadingState();
   chatsLoading = true;
   unsubscribeUsers = subscribeAuthenticatedUsers(
-    (users) => {
+    guard((users) => {
       approvedUsersLoaded = true;
       authenticatedUsers = users;
       syncApprovedFamilyContacts(user);
-    },
-    (error) => {
+    }),
+    guard((error) => {
       chatsLoading = false;
       showFirebaseError(error);
-      renderAll();
-    }
+      renderLiveUpdate();
+    })
   );
   unsubscribeGroups = subscribeUserGroups(
     user.uid,
-    (groups) => {
+    guard((groups) => {
       userGroupsLoaded = true;
       firebaseGroups = groups;
       syncApprovedFamilyContacts(user);
       restartManagedGroupJoinRequestSubscription(user);
-    },
-    (error) => {
+    }),
+    guard((error) => {
       chatsLoading = false;
       showFirebaseError(error);
-      renderAll();
-    }
+      renderLiveUpdate();
+    })
   );
   unsubscribeAvailableGroups = subscribeDiscoverableGroups(
     user.uid,
-    (groups) => {
+    guard((groups) => {
       availableGroups = groups;
-      renderAll();
-    },
+      restartManagedGroupJoinRequestSubscription(user);
+      renderLiveUpdate();
+    }),
     showFirebaseError
   );
   unsubscribeOwnGroupJoinRequests = subscribeOwnGroupJoinRequests(
     user.uid,
-    (requests) => {
+    guard((requests) => {
       ownGroupJoinRequests = requests;
-      renderAll();
-    },
+      renderLiveUpdate();
+    }),
     showFirebaseError
   );
   restartManagedGroupJoinRequestSubscription(user);
   if (isFamilyOwnerEmail(user.email)) {
     unsubscribePendingFamilyUsers = subscribePendingFamilyUsers(
-      (users) => {
+      guard((users) => {
         pendingFamilyUsers = users.filter((item) => item.uid !== user.uid);
-        renderAll();
-      },
+        renderLiveUpdate();
+      }),
       showFirebaseError
     );
     unsubscribeFamilyInvites = subscribeFamilyInvites(
-      (invites) => {
+      guard((invites) => {
         pendingFamilyInvites = invites;
-        renderAll();
-      },
+        renderLiveUpdate();
+      }),
       showFirebaseError
     );
   }
@@ -3595,6 +3721,12 @@ function startApprovedFamilyLists(user) {
 
 document.addEventListener('visibilitychange', () => {
   updateCurrentPresence(document.hidden ? 'away' : 'online', { force: true });
+  if (document.hidden) {
+    unsubscribeConversation();
+    subscribedConversationContactId = '';
+  } else if (state.activeSection === 'chats' && !activeAction) {
+    subscribeActiveConversation();
+  }
 });
 
 window.addEventListener('beforeunload', () => {
@@ -3610,20 +3742,41 @@ window.addEventListener('beforeunload', () => {
 function startFirebaseAuth() {
   startAuthListener(
     async (user) => {
+      const generation = ++authGeneration;
+      currentUserProfile = null;
+      state = createInitialState(user ? loadSavedChatState(user.uid) : {});
+      restoreSelectedChatOnLoad = Boolean(state.activeContactId);
+      Object.assign(profileValues, loadProfileValues(user?.uid ?? ''));
+      loadSettingSwitches(user?.uid ?? '');
+      messageDrafts.clear();
+      pendingMessageSends.clear();
+      conversation.innerHTML = '';
+      chatList.innerHTML = '';
+      friendsInvitesPanel.innerHTML = '';
+      document.querySelector('[data-panel="settings"]').innerHTML = '';
+      emptyState.innerHTML = '';
+      document.querySelectorAll('.action-dialog-backdrop').forEach(dialog => dialog.remove());
+      activeAction = null;
+      activeSettingsPage = null;
+      closeContactMenu();
+      closeMessageMenu();
       authReady = true;
       authError = '';
       currentAuthUser = user;
       chatsLoading = Boolean(user);
-      unsubscribeUsers();
       unsubscribeCurrentUserProfile();
-      unsubscribePendingFamilyUsers();
-      unsubscribeFamilyInvites();
-      unsubscribeConversation();
-      unsubscribeGroups();
-      unsubscribeAvailableGroups();
-      unsubscribeOwnGroupJoinRequests();
-      unsubscribeManagedGroupJoinRequests();
-      familyListsStarted = false;
+      stopApprovedFamilyLists();
+      resetVoiceCall();
+      closeVoiceSocket({ intentional: true });
+      authenticatedUsers = [];
+      firebaseGroups = [];
+      availableGroups = [];
+      ownGroupJoinRequests = [];
+      pendingGroupJoinRequests = [];
+      pendingFamilyUsers = [];
+      pendingFamilyInvites = [];
+      friendSearchQuery = '';
+      selectedGroupMemberIds = new Set();
       resetApprovedChatLoadingState();
       subscribedConversationContactId = '';
       if (!user) {
@@ -3648,9 +3801,11 @@ function startFirebaseAuth() {
       }
 
       await saveUserProfile(user).catch((error) => {
+        if (generation !== authGeneration) return;
         authError = error.message;
         chatsLoading = false;
       });
+      if (generation !== authGeneration) return;
       currentPresenceStatus = '';
       updateCurrentPresence(document.hidden ? 'away' : 'online', { force: true });
       ensureVoiceSocket().catch((error) => {
@@ -3659,6 +3814,7 @@ function startFirebaseAuth() {
       unsubscribeCurrentUserProfile = subscribeCurrentUserProfile(
         user.uid,
         (profile) => {
+          if (generation !== authGeneration) return;
           currentUserProfile = profile;
           if (isCurrentUserApproved()) {
             startApprovedFamilyLists(user);
@@ -3666,6 +3822,8 @@ function startFirebaseAuth() {
               console.warn('[Kids WhatsApp] Voice signalling unavailable', error);
             });
           } else {
+            stopApprovedFamilyLists();
+            resetVoiceCall();
             closeVoiceSocket({ intentional: true });
             authenticatedUsers = [];
             firebaseGroups = [];
@@ -3702,5 +3860,10 @@ function startFirebaseAuth() {
 
 renderAll();
 startFirebaseAuth();
-hydrateChatsFromServer();
-startLiveChatSync();
+
+function syncViewportHeight() {
+  document.documentElement.style.setProperty('--app-height', `${window.visualViewport?.height ?? window.innerHeight}px`);
+}
+window.visualViewport?.addEventListener('resize', syncViewportHeight);
+window.addEventListener('resize', syncViewportHeight);
+syncViewportHeight();

@@ -43,7 +43,7 @@ const actionViews = {
   },
   createGroup: {
     title: 'Create Group',
-    body: 'Choose at least two signed-in friends and give the group a friendly name.',
+    body: 'Choose at least 1 signed-in friend and give the group a friendly name.',
     primaryAction: 'Create group',
     points: ['Signed-in friends', 'Text chat', 'Kid-safe group'],
     form: 'createGroup'
@@ -159,7 +159,7 @@ const settingsPages = {
     items: [
       { type: 'readonly', label: 'Name', value: 'Aadhish Mahendran', detail: 'Safe sign-in keeps your identity real.' },
       { type: 'readonly', label: 'Photo', value: '', detail: 'Profile photo from your signed-in account.' },
-      { type: 'input', label: 'Status', value: 'Ready to chat', detail: 'A short mood your friends can see.' },
+      { type: 'input', label: 'Status', value: 'Ready to chat', detail: 'A short mood saved on this browser.' },
       { type: 'input', label: 'Favorite color', value: 'Purple', detail: 'Pick a color that feels like you.' },
       {
         type: 'textarea',
@@ -542,6 +542,7 @@ export function createAuthenticatedContact(state, user) {
     ...state,
     activeSection: 'chats',
     activeContactId: user.uid,
+    deletedContactIds: (state.deletedContactIds ?? []).filter((id) => id !== user.uid),
     contacts
   };
 }
@@ -553,7 +554,8 @@ export function reconcileAuthenticatedContacts(state, users = [], currentUid = '
   const groupContacts = groups
     .filter((group) => group?.id && normalizeGroupMembers(group).includes(currentUid))
     .map((group) => buildGroupContact(group, existingById.get(group.id)));
-  const contacts = [...userContacts, ...groupContacts];
+  const removed = new Set(state.deletedContactIds ?? []);
+  const contacts = [...userContacts, ...groupContacts].filter((contact) => !removed.has(contact.id));
   const activeContactId = contacts.some((contact) => contact.id === state.activeContactId)
     ? state.activeContactId
     : contacts[0]?.id;
@@ -566,6 +568,7 @@ export function reconcileAuthenticatedContacts(state, users = [], currentUid = '
 }
 
 export function createInitialState(savedState = {}) {
+  if (!savedState || typeof savedState !== 'object') savedState = {};
   const savedContacts = Array.isArray(savedState.contacts)
     ? savedState.contacts.filter(isRestorableSavedContact)
     : [];
@@ -651,7 +654,8 @@ export function filterContacts(state, { query = '', filter = 'all' } = {}) {
     const matchesQuery =
       contact.name.toLowerCase().includes(needle) ||
       contact.preview.toLowerCase().includes(needle) ||
-      (contact.email ?? '').toLowerCase().includes(needle);
+      (contact.email ?? '').toLowerCase().includes(needle) ||
+      contact.messages.some((message) => !message.deleted && String(message.text ?? '').toLowerCase().includes(needle));
     const matchesFilter =
       filter === 'all' ||
       (filter === 'unread' && contact.unread > 0) ||

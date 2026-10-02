@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />
     <title>Kids WhatsApp 2026</title>
     <link rel="icon" href="app-icon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="styles.css" />
@@ -11,17 +11,20 @@
     <main class="app-shell" aria-label="Kids WhatsApp 2026">
       <nav class="rail" aria-label="Primary">
         <button class="rail-button active" data-section="chats" title="Chats" aria-label="Chats">
-          <span class="badge">8</span>
+          <span class="badge hidden">0</span>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H7l-3 3V5Zm4 4h8v2H8V9Zm0 4h6v2H8v-2Z"/></svg>
+          <span class="rail-label">Chats</span>
         </button>
         <button class="rail-button" data-section="friends" title="Friends &amp; Invites" aria-label="Friends and Invites">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8Zm8.5 1a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7ZM2 20a6 6 0 0 1 12 0v1H2v-1Zm12.6 1a7.9 7.9 0 0 0-2.1-5.3A5 5 0 0 1 22 18v3h-7.4Z"/></svg>
+          <span class="rail-label">Friends</span>
         </button>
         <div class="rail-spacer"></div>
         <button class="rail-button" data-section="settings" title="Settings" aria-label="Settings">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m19.4 13.5.1-1.5-.1-1.5 2-1.55-2-3.46-2.45 1a8 8 0 0 0-2.6-1.5L14 2.4h-4l-.35 2.6a8 8 0 0 0-2.6 1.5l-2.45-1-2 3.46 2 1.55L4.5 12l.1 1.5-2 1.55 2 3.46 2.45-1a8 8 0 0 0 2.6 1.5l.35 2.6h4l.35-2.6a8 8 0 0 0 2.6-1.5l2.45 1 2-3.46-2-1.55ZM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z"/></svg>
+          <span class="rail-label">Settings</span>
         </button>
-        <div class="profile" title="Profile">KW</div>
+        <button class="profile" type="button" title="Profile" aria-label="Open profile" data-open-profile>KW</button>
       </nav>
 
       <aside class="sidebar">

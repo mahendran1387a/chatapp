@@ -15,7 +15,8 @@ test('Firebase Google auth gates chat access and removes manual new-chat registr
   assert.match(app, /Loading chats\.\.\./);
   assert.match(app, /if \(!authReady\) return/);
   assert.match(app, /let chatsLoading = false/);
-  assert.match(app, /if \(!authReady \|\| currentAuthUser\) return/);
+  assert.doesNotMatch(app, /serverChatStorageUrl/);
+  assert.match(app, /savedChatStorageKey}\.\$\{uid/);
   assert.match(auth, /signInWithPopup/);
   assert.match(auth, /prompt: 'select_account'/);
   assert.match(auth, /signOut\(firebase\.auth\)/);
