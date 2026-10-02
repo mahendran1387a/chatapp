@@ -1,4 +1,7 @@
-export const maxRequestBodyBytes = Number(process.env.MAX_CHAT_BODY_MB ?? 25) * 1024 * 1024;
+const configuredRequestBodyBytes = Number(process.env.MAX_CHAT_BODY_MB ?? 25) * 1024 * 1024;
+export const maxRequestBodyBytes = Number.isFinite(configuredRequestBodyBytes) && configuredRequestBodyBytes > 0
+  ? configuredRequestBodyBytes
+  : 25 * 1024 * 1024;
 
 export async function readRequestBody(request) {
   const chunks = [];

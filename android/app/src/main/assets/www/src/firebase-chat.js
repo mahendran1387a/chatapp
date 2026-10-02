@@ -20,6 +20,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -147,7 +148,7 @@ export async function saveUserProfile(user) {
   const existingData = existing.exists() ? existing.data() : {};
   const profile = toUserProfile(user);
   const hasInvite = Boolean(invite?.exists());
-  if (!isFamilyOwnerEmail(user.email) && hasInvite) {
+  if (!isFamilyOwnerEmail(user.email) && hasInvite && existingData.approved !== true) {
     profile.approved = true;
     profile.role = 'member';
     profile.approvedBy = invite.data()?.invitedBy ?? '';
@@ -468,16 +469,19 @@ function mapMessageDoc(item, currentUid, readTargetUid = '') {
     read: readTargetUid ? readBy.includes(readTargetUid) : false,
     timestamp: data.timestamp?.toMillis?.() ?? Date.now(),
     time: data.timestamp?.toDate?.().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) ?? 'Now',
-    deleted: data.deleted === true
+    deleted: data.deleted === true,
+    edited: data.edited === true
   };
 }
 
 export async function createFirebaseGroup({ groupName, memberUids = [] }, user) {
   const firebase = ensureFirebase();
-  const cleanName = groupName.trim();
+  const cleanName = typeof groupName === 'string' ? groupName.trim() : '';
   if (!firebase) throw new Error('Firebase is not ready yet.');
   if (!user?.uid) throw new Error('Please sign in again before creating a group.');
   if (!cleanName) throw new Error('Give your group a name.');
+  if (cleanName.length > 80) throw new Error('Keep your group name under 80 characters.');
+  if (normalizeGroupMembers(memberUids, user.uid).length > 10) throw new Error('Groups can have up to 10 people, including you.');
   if (memberUids.length < 1) throw new Error('Choose at least 1 friend for a group.');
 
   const approvedProfile = await loadApprovedUser(firebase, user.uid);
@@ -539,11 +543,12 @@ export async function createFirebaseGroup({ groupName, memberUids = [] }, user) 
 
 export async function updateFirebaseGroupName(groupId, groupName, user) {
   const firebase = ensureFirebase();
-  const cleanName = groupName.trim();
+  const cleanName = typeof groupName === 'string' ? groupName.trim() : '';
   if (!firebase) throw new Error('Firebase is not ready yet.');
   if (!user?.uid) throw new Error('Please sign in again before editing a group.');
   if (!groupId) throw new Error('Choose a group first.');
   if (!cleanName) throw new Error('Give your group a name.');
+  if (cleanName.length > 80) throw new Error('Keep your group name under 80 characters.');
 
   const groupRef = doc(firebase.db, 'groups', groupId);
   const approvedProfile = await loadApprovedUser(firebase, user.uid);
@@ -805,14 +810,14 @@ export function subscribeManagedGroupJoinRequests(groups = [], user, onRequests,
     managedGroupIds
   });
 
-  return onSnapshot(
-    query(
-      collection(firebase.db, 'groupJoinRequests'),
-      where('managerIds', 'array-contains', user.uid),
-      where('status', '==', 'pending')
-    ),
+  const requestsByGroup = new Map();
+  onRequests([]);
+  const unsubscribers = [...new Set(managedGroupIds)].map((groupId) => onSnapshot(
+    query(collection(firebase.db, 'groupJoinRequests'),
+      where('groupId', '==', groupId), where('status', '==', 'pending')),
     (snapshot) => {
-      const requests = mapJoinRequestSnapshot(snapshot).sort((first, second) => {
+      requestsByGroup.set(groupId, mapJoinRequestSnapshot(snapshot));
+      const requests = [...requestsByGroup.values()].flat().sort((first, second) => {
         const firstTime = first.requestedAt?.toMillis?.() ?? first.requestedAt ?? 0;
         const secondTime = second.requestedAt?.toMillis?.() ?? second.requestedAt ?? 0;
         return secondTime - firstTime;
@@ -832,7 +837,8 @@ export function subscribeManagedGroupJoinRequests(groups = [], user, onRequests,
       });
       onError?.(error);
     }
-  );
+  ));
+  return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
 }
 
 export async function requestGroupJoin(group, user) {
@@ -850,8 +856,10 @@ export async function requestGroupJoin(group, user) {
   if (isUserInGroup(groupData, user.uid)) throw new Error('You are already in this group.');
 
   const requestRef = doc(firebase.db, 'groupJoinRequests', getGroupJoinRequestId(groupId, user.uid));
-  const existingRequest = await getDoc(requestRef);
-  const existingData = existingRequest.exists() ? existingRequest.data() : null;
+  // A missing request has no owner field for the rules to authorize a get.
+  const existingRequests = await getDocs(query(collection(firebase.db, 'groupJoinRequests'),
+    where('uid', '==', user.uid), where('groupId', '==', groupId)));
+  const existingData = existingRequests.docs.find((item) => item.id === requestRef.id)?.data() ?? null;
   if (existingData?.status === 'pending') {
     console.info('[Kids WhatsApp] Duplicate group join request ignored', {
       path: requestRef.path,
@@ -930,38 +938,41 @@ export async function approveGroupJoinRequest(request, user) {
   await loadApprovedUser(firebase, request.uid);
   const groupRef = doc(firebase.db, 'groups', request.groupId);
   const requestRef = doc(firebase.db, 'groupJoinRequests', getGroupJoinRequestId(request.groupId, request.uid));
-  const groupSnapshot = await getDoc(groupRef);
-  const group = groupSnapshot.exists() ? groupSnapshot.data() : null;
-  if (!group || !canManageFirebaseGroup(group, user.uid)) {
-    throw new Error('Only group creators, hosts, or admins can approve join requests.');
-  }
-
-  const nextMembers = [...new Set([...getExistingGroupMembers(group), request.uid])];
-  console.info('[Kids WhatsApp] Approving group join', {
-    groupId: request.groupId,
-    uid: request.uid,
-    decidedBy: user.uid,
-    memberIds: nextMembers
+  await runTransaction(firebase.db, async (transaction) => {
+    const groupSnapshot = await transaction.get(groupRef);
+    const requestSnapshot = await transaction.get(requestRef);
+    const group = groupSnapshot.exists() ? groupSnapshot.data() : null;
+    const savedRequest = requestSnapshot.exists() ? requestSnapshot.data() : null;
+    if (!group || !canManageFirebaseGroup(group, user.uid)) {
+      throw new Error('Only group creators, hosts, or admins can approve join requests.');
+    }
+    if (!savedRequest || savedRequest.status !== 'pending' || savedRequest.uid !== request.uid || savedRequest.groupId !== request.groupId) {
+      throw new Error('This join request is no longer pending.');
+    }
+    const nextMembers = [...new Set([...getExistingGroupMembers(group), request.uid])];
+    console.info('[Kids WhatsApp] Approving group join', {
+      groupId: request.groupId,
+      uid: request.uid,
+      decidedBy: user.uid,
+      memberIds: nextMembers
+    });
+    transaction.update(groupRef, {
+      memberIds: arrayUnion(...nextMembers),
+      members: arrayUnion(...nextMembers),
+      participants: arrayUnion(...nextMembers),
+      updatedAt: serverTimestamp()
+    });
+    transaction.update(requestRef, {
+      status: 'approved',
+      decidedBy: user.uid,
+      decidedAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
   });
-  const batch = writeBatch(firebase.db);
-  batch.update(groupRef, {
-    memberIds: nextMembers,
-    members: nextMembers,
-    participants: nextMembers,
-    updatedAt: serverTimestamp()
-  });
-  batch.update(requestRef, {
-    status: 'approved',
-    decidedBy: user.uid,
-    decidedAt: serverTimestamp(),
-    updatedAt: serverTimestamp()
-  });
-  await batch.commit();
   console.info('[Kids WhatsApp] Approved group join', {
     groupId: request.groupId,
     uid: request.uid,
-    decidedBy: user.uid,
-    memberIds: nextMembers
+    decidedBy: user.uid
   });
   return { ...request, status: 'approved' };
 }
@@ -994,11 +1005,13 @@ export function getConversationId(firstUid, secondUid) {
 
 export async function sendFirebaseMessage(contactUid, text, user) {
   const firebase = ensureFirebase();
-  const cleanText = text.trim();
+  const cleanText = typeof text === 'string' ? text.trim() : '';
   if (!firebase) throw new Error('Firebase is not ready yet.');
   if (!user?.uid) throw new Error('Please sign in again before chatting.');
   if (!contactUid) throw new Error('Choose a signed-in friend first.');
+  if (contactUid === user.uid) throw new Error('Choose a friend other than yourself.');
   if (!cleanText) return null;
+  if (cleanText.length > 4000) throw new Error('Keep your message under 4000 characters.');
 
   const conversationId = getConversationId(user.uid, contactUid);
   const participants = [user.uid, contactUid].sort();
@@ -1024,7 +1037,7 @@ export async function sendFirebaseMessage(contactUid, text, user) {
   return { id: messageRef.id, ...payload };
 }
 
-export function subscribeConversationMessages(currentUid, contactUid, onMessages, onError) {
+export function subscribeConversationMessages(currentUid, contactUid, onMessages, onError, shouldMarkRead = () => true) {
   const firebase = ensureFirebase();
   if (!firebase || !currentUid || !contactUid) {
     onMessages([]);
@@ -1032,33 +1045,88 @@ export function subscribeConversationMessages(currentUid, contactUid, onMessages
   }
 
   const conversationId = getConversationId(currentUid, contactUid);
-  return onSnapshot(
-    query(
-      collection(firebase.db, 'conversations', conversationId, 'messages'),
-      orderBy('timestamp')
-    ),
+  let unsubscribeMessages = null;
+  let cancelled = false;
+  const unsubscribeConversation = onSnapshot(
+    query(collection(firebase.db, 'conversations'),
+      where('participants', 'array-contains', currentUid)),
     (snapshot) => {
-      const messages = snapshot.docs.map((item) => {
-        const data = item.data();
-        const readBy = Array.isArray(data.readBy) ? data.readBy : [];
-        if (data.senderUid !== currentUid && !readBy.includes(currentUid)) {
-          updateDoc(item.ref, { readBy: arrayUnion(currentUid) }).catch((error) => onError?.(error));
-        }
-        return mapMessageDoc(item, currentUid, contactUid);
-      });
-      onMessages(messages);
+      if (cancelled) return;
+      if (!snapshot.docs.some((item) => item.id === conversationId)) {
+        unsubscribeMessages?.();
+        unsubscribeMessages = null;
+        onMessages([]);
+        return;
+      }
+      if (unsubscribeMessages) return;
+      unsubscribeMessages = onSnapshot(
+        query(collection(firebase.db, 'conversations', conversationId, 'messages'), orderBy('timestamp')),
+        (snapshot) => {
+          const messages = snapshot.docs.map((item) => {
+            const data = item.data();
+            const readBy = Array.isArray(data.readBy) ? data.readBy : [];
+            if (shouldMarkRead() && data.senderUid !== currentUid && !readBy.includes(currentUid)) {
+              updateDoc(item.ref, { readBy: arrayUnion(currentUid) }).catch((error) => onError?.(error));
+            }
+            return mapMessageDoc(item, currentUid, contactUid);
+          });
+          onMessages(messages);
+        },
+        (error) => onError?.(error)
+      );
     },
     (error) => onError?.(error)
   );
+  return () => {
+    cancelled = true;
+    unsubscribeConversation();
+    unsubscribeMessages?.();
+  };
+}
+
+function messageReference(firebase, contact, messageId, user) {
+  if (!user?.uid || firebase.auth.currentUser?.uid !== user.uid) throw new Error('Please sign in again before changing a message.');
+  if (!contact?.id || !messageId) throw new Error('Choose a message first.');
+  if (contact.group === true || contact.type === 'group') {
+    return doc(firebase.db, 'groups', contact.groupId ?? contact.id, 'messages', messageId);
+  }
+  return doc(firebase.db, 'conversations', getConversationId(user.uid, contact.uid ?? contact.id), 'messages', messageId);
+}
+
+async function changeFirebaseMessage(contact, messageId, changes, user) {
+  const firebase = ensureFirebase();
+  if (!firebase) throw new Error('Firebase is not ready yet.');
+  const messageRef = messageReference(firebase, contact, messageId, user);
+  return runTransaction(firebase.db, async (transaction) => {
+    const snapshot = await transaction.get(messageRef);
+    if (!snapshot.exists()) throw new Error('This message was not found.');
+    const message = snapshot.data();
+    if (message.senderUid !== user.uid) throw new Error('You can only change your own messages.');
+    if (message.deleted === true) throw new Error('This message was already deleted.');
+    transaction.update(messageRef, changes);
+    return { id: messageId, ...message, ...changes };
+  });
+}
+
+export async function updateFirebaseMessage(contact, messageId, text, user) {
+  const cleanText = typeof text === 'string' ? text.trim() : '';
+  if (!cleanText) throw new Error('Write a message first.');
+  if (cleanText.length > 4000) throw new Error('Keep your message under 4000 characters.');
+  return changeFirebaseMessage(contact, messageId, { text: cleanText, edited: true }, user);
+}
+
+export async function deleteFirebaseMessage(contact, messageId, user) {
+  return changeFirebaseMessage(contact, messageId, { text: '', deleted: true }, user);
 }
 
 export async function sendFirebaseGroupMessage(groupId, text, user) {
   const firebase = ensureFirebase();
-  const cleanText = text.trim();
+  const cleanText = typeof text === 'string' ? text.trim() : '';
   if (!firebase) throw new Error('Firebase is not ready yet.');
   if (!user?.uid) throw new Error('Please sign in again before chatting.');
   if (!groupId) throw new Error('Choose a group first.');
   if (!cleanText) return null;
+  if (cleanText.length > 4000) throw new Error('Keep your message under 4000 characters.');
 
   const groupRef = doc(firebase.db, 'groups', groupId);
   const groupSnapshot = await getDoc(groupRef);
@@ -1081,7 +1149,7 @@ export async function sendFirebaseGroupMessage(groupId, text, user) {
   return { id: messageRef.id, ...payload };
 }
 
-export function subscribeGroupMessages(groupId, currentUid, onMessages, onError) {
+export function subscribeGroupMessages(groupId, currentUid, onMessages, onError, shouldMarkRead = () => true) {
   const firebase = ensureFirebase();
   if (!firebase || !groupId || !currentUid) {
     onMessages([]);
@@ -1094,7 +1162,7 @@ export function subscribeGroupMessages(groupId, currentUid, onMessages, onError)
       const messages = snapshot.docs.map((item) => {
         const data = item.data();
         const readBy = Array.isArray(data.readBy) ? data.readBy : [];
-        if (data.senderUid !== currentUid && !readBy.includes(currentUid)) {
+        if (shouldMarkRead() && data.senderUid !== currentUid && !readBy.includes(currentUid)) {
           updateDoc(item.ref, { readBy: arrayUnion(currentUid) }).catch((error) => onError?.(error));
         }
         return mapMessageDoc(item, currentUid);

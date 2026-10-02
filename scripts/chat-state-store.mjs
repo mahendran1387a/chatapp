@@ -1,5 +1,6 @@
+import { createHash, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import pg from 'pg';
 
@@ -68,12 +69,13 @@ function queueStoreWrites(store) {
   return {
     ...store,
     async merge(payload) {
-      writeQueue = writeQueue.then(async () => {
+      const operation = writeQueue.then(async () => {
         const merged = mergeChatState(await store.read(), payload);
         await store.write(merged);
         return merged;
       });
-      return writeQueue;
+      writeQueue = operation.catch(() => {});
+      return operation;
     }
   };
 }
@@ -86,20 +88,29 @@ function createFileStore(chatsFile) {
     },
     async write(payload) {
       await mkdir(dirname(chatsFile), { recursive: true });
-      await writeFile(chatsFile, JSON.stringify(payload, null, 2), 'utf8');
+      const temporaryFile = `${chatsFile}.${randomUUID()}.tmp`;
+      try {
+        await writeFile(temporaryFile, JSON.stringify(payload, null, 2), { encoding: 'utf8', mode: 0o600 });
+        await rename(temporaryFile, chatsFile);
+      } finally {
+        await rm(temporaryFile, { force: true });
+      }
     }
   };
 }
 
-function createPostgresStore(databaseUrl) {
+function createPostgresStore(databaseUrl, stateId) {
+  const connectionUrl = new URL(databaseUrl);
+  // pg lets URL SSL settings override the ssl object; never accept a verification bypass.
+  connectionUrl.searchParams.set('sslmode', 'verify-full');
   const pool = new pg.Pool({
-    connectionString: databaseUrl,
-    ssl: { rejectUnauthorized: false }
+    connectionString: connectionUrl.toString(),
+    ssl: { rejectUnauthorized: true }
   });
 
   return {
     async read() {
-      const result = await pool.query('select payload from public.chat_state where id = $1', [sharedStateId]);
+      const result = await pool.query('select payload from public.chat_state where id = $1', [stateId]);
       return result.rows[0]?.payload ?? {};
     },
     async write(payload) {
@@ -108,7 +119,7 @@ function createPostgresStore(databaseUrl) {
          values ($1, $2::jsonb, now())
          on conflict (id)
          do update set payload = excluded.payload, updated_at = now()`,
-        [sharedStateId, JSON.stringify(payload)]
+        [stateId, JSON.stringify(payload)]
       );
     },
     async close() {
@@ -117,9 +128,13 @@ function createPostgresStore(databaseUrl) {
   };
 }
 
-export function createChatStateStore({ root, databaseUrl = process.env.DATABASE_URL } = {}) {
-  if (databaseUrl) return queueStoreWrites(createPostgresStore(databaseUrl));
+export function createChatStateStore({ root, databaseUrl = process.env.DATABASE_URL, uid } = {}) {
+  const userKey = uid === undefined ? '' : createHash('sha256').update(uid).digest('hex');
+  const stateId = userKey ? `user:${userKey}` : sharedStateId;
+  if (databaseUrl) return queueStoreWrites(createPostgresStore(databaseUrl, stateId));
 
   const baseRoot = root ?? process.cwd();
-  return queueStoreWrites(createFileStore(join(baseRoot, '.data', 'chats.json')));
+  return queueStoreWrites(createFileStore(userKey
+    ? join(baseRoot, '.data', 'users', `${userKey}.json`)
+    : join(baseRoot, '.data', 'chats.json')));
 }

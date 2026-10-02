@@ -548,7 +548,7 @@ test('text inputs keep focus during live sync and settings search typing', () =>
   ]) {
     const contents = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
     assert.match(contents, /function isTextEntryActive\(\)/);
-    assert.match(contents, /if \(isTextEntryActive\(\)\) return;\s+renderAll\(\);/);
+    assert.match(contents, /function renderLiveUpdate\(\)/);
     assert.match(contents, /function renderSettingsScrollableContent\(\)/);
     assert.match(contents, /settingsScroll\.innerHTML = renderSettingsScrollableContent\(\)/);
     assert.doesNotMatch(contents, /refreshedInput\.focus\(\)/);
@@ -604,4 +604,27 @@ test('settings search returns matching rows that can be opened', () => {
   assert.ok(chatResults.every((row) => `${row.label} ${row.detail}`.toLowerCase().includes('chat')));
   assert.deepEqual(privacyResults.map((row) => row.label), ['Privacy']);
   assert.deepEqual(missingResults, []);
+});
+
+test('removed shortcuts stay removed after live reconciliation', () => {
+  const user = {uid:'friend',email:'friend@example.test',displayName:'Friend',approved:true};
+  const state = deleteContactChat(createAuthenticatedContact(createInitialState(),user),'friend');
+  assert.deepEqual(reconcileAuthenticatedContacts(state,[user],'self').contacts,[]);
+});
+
+test('explicitly reopening a friend restores their removed shortcut', () => {
+  const user = {uid:'friend',email:'friend@example.test',displayName:'Friend',approved:true};
+  const removed = deleteContactChat(createAuthenticatedContact(createInitialState(),user),'friend');
+  const reopened = createAuthenticatedContact(removed,user);
+  assert.equal(reopened.deletedContactIds.includes('friend'),false);
+  assert.equal(reconcileAuthenticatedContacts(reopened,[user],'self').contacts.length,1);
+});
+
+test('chat search finds older messages as well as the latest preview', () => {
+  const state = createInitialState({contacts:[buildSavedContact({preview:'Latest message',messages:[{id:'old',text:'Meet at the library'}]})]});
+  assert.equal(filterContacts(state,{query:'library'}).length,1);
+});
+
+test('a malformed null browser cache does not crash initial state', () => {
+  assert.deepEqual(createInitialState(null).contacts,[]);
 });

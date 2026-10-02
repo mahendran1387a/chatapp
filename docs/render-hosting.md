@@ -28,31 +28,21 @@ Do not share the local URL with friends. It only works on the computer where the
 
 The same public link is also saved in `PUBLIC_CHAT_LINK.txt` and `Open Chat App Online.url`.
 
-## Notes
+## Data and authentication
 
-- The app uses `/api/chats` on the same server to save messages.
-- The server uses Render's `PORT` environment variable automatically.
-- The server binds to `0.0.0.0`, which Render requires for public web services.
-- Render can use `/healthz` as the service health check endpoint.
-- When `DATABASE_URL` is set, messages are saved in Supabase.
-- When `DATABASE_URL` is not set, messages fall back to the local `.data/chats.json` file.
-- Do not put the database password into browser code. Put the full database connection string only in Render environment variables.
+- Google authentication and Firestore handle profiles, approvals, groups and chat messages.
+- Deploy `firestore.rules` and `firestore.indexes.json` using `firebase deploy --only firestore:rules,firestore:indexes`; wait for indexes to finish building.
+- Browser preferences and cached chat state are scoped to the signed-in user on that device.
+- The legacy `/api/chats` endpoint requires a Bearer Firebase ID token and an approved profile. Its storage is isolated by verified user ID; the browser no longer polls the old shared document.
+- Old shared server data remains private and is not automatically assigned to any user.
+- Voice signaling also requires verified, approved accounts. Tokens expire and must be refreshed by reconnecting.
+- The server uses Render's `PORT`, binds to `0.0.0.0`, and exposes `/healthz` for health checks.
+- Android opens this same public HTTPS URL in the system browser so Google sign-in and browser microphone access work on a supported origin.
 
-## Supabase Database
+## Optional PostgreSQL storage
 
-This project uses a Supabase table named `public.chat_state`.
+The legacy authenticated chat-state API uses `public.chat_state` when `DATABASE_URL` is configured. Without it, user records are stored beneath the private `.data/users` directory. Render's ordinary local filesystem is ephemeral; Firestore remains the application's message source.
 
-To connect Render to Supabase:
+Set the database connection string only in Render environment variables. PostgreSQL TLS certificates are verified; provide a trusted certificate chain when your database provider requires one. Do not disable verification or put credentials in browser code.
 
-1. Open your Supabase project.
-2. Go to **Project Settings** > **Database**.
-3. Copy the database connection string.
-4. In Render, open the web service.
-5. Go to **Environment**.
-6. Add:
-
-```text
-DATABASE_URL=your-supabase-database-connection-string
-```
-
-After that, all phones and computers using the hosted Render URL will read and write the same online chat data.
+After deployment, check Google sign-in, messages between two approved accounts and a two-device voice call. See `docs/application-review-2026-10-02.md` for fixes and validation limits.

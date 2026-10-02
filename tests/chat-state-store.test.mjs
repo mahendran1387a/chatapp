@@ -125,3 +125,51 @@ test('store merge serializes saves and preserves messages from parallel clients'
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('store merge recovers after a transient failed read', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'chatapp-store-'));
+  try {
+    await mkdir(join(root, '.data'), { recursive: true });
+    const file = join(root, '.data', 'chats.json');
+    await writeFile(file, '{broken');
+    const store = createChatStateStore({ root });
+    await assert.rejects(store.merge({ contacts: [] }));
+    await writeFile(file, '{}');
+    await store.merge({ contacts: [{ id: 'friend', messages: [] }] });
+    assert.equal((await store.read()).contacts[0].id, 'friend');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('user-scoped stores never read legacy shared data or another users chats', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'chatapp-store-'));
+  try {
+    await mkdir(join(root, '.data'), { recursive: true });
+    await writeFile(join(root, '.data', 'chats.json'), '{"secret":"legacy"}');
+    const alice = createChatStateStore({ root, uid: 'alice' });
+    const bob = createChatStateStore({ root, uid: 'bob' });
+    assert.deepEqual(await alice.read(), {});
+    await alice.merge({ contacts: [{ id: 'friend', messages: [] }] });
+    assert.deepEqual(await bob.read(), {});
+    assert.equal((await createChatStateStore({ root, uid: 'alice' }).read()).contacts[0].id, 'friend');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('Postgres connections keep certificate verification enabled even for an insecure URL option', async () => {
+  const { default: pg } = await import('pg');
+  const OriginalPool = pg.Pool;
+  const { default: ConnectionParameters } = await import('pg/lib/connection-parameters.js');
+  const configs = [];
+  pg.Pool = class {
+    constructor(config) { configs.push(config); }
+    async query() { return { rows: [] }; }
+    async end() {}
+  };
+  try {
+    const store = createChatStateStore({ databaseUrl: 'postgresql://localhost/fixture?sslmode=no-verify', uid: 'alice' });
+    await store.read();
+    const parameters = new ConnectionParameters(configs[0]);
+    assert.ok(parameters.ssl);
+    assert.notEqual(parameters.ssl.rejectUnauthorized, false);
+    await store.close();
+  } finally { pg.Pool = OriginalPool; }
+});
